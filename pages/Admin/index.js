@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
-import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
-import { app } from "../../firebase";
+import { auth, db } from "../../firebase";
+import { onAuthStateChanged } from "firebase/auth";
 import {
-  getFirestore,
   collection,
   getDocs,
   updateDoc,
@@ -12,103 +11,61 @@ import {
 
 export default function Admin() {
   const router = useRouter();
-  const auth = getAuth(app);
-  const db = getFirestore(app);
-
-  const [isAdmin, setIsAdmin] = useState(false);
   const [payments, setPayments] = useState([]);
   const [editors, setEditors] = useState([]);
 
-  // 🔐 Admin login check
   useEffect(() => {
-    const unsub = auth.onAuthStateChanged((user) => {
-      if (!user) {
+    const unsub = onAuthStateChanged(auth, (user) => {
+      if (!user || user.email !== "admin@editbridge.com") {
         router.push("/login");
-      } else if (user.email === "admin@editbridge.com") {
-        setIsAdmin(true);
-        loadData();
       } else {
-        alert("Not Admin");
-        router.push("/");
+        loadData();
       }
     });
     return () => unsub();
   }, []);
 
-  // 📥 Load data
   const loadData = async () => {
-    const paySnap = await getDocs(collection(db, "payments"));
-    const editorSnap = await getDocs(collection(db, "editors"));
+    const p = await getDocs(collection(db, "payments"));
+    const e = await getDocs(collection(db, "editors"));
 
-    setPayments(paySnap.docs.map(d => ({ id: d.id, ...d.data() })));
-    setEditors(editorSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+    setPayments(p.docs.map(d => ({ id: d.id, ...d.data() })));
+    setEditors(e.docs.map(d => ({ id: d.id, ...d.data() })));
   };
 
-  // ✅ Approve payment
   const approvePayment = async (id) => {
-    await updateDoc(doc(db, "payments", id), {
-      status: "approved"
-    });
-    alert("Payment Approved");
+    await updateDoc(doc(db, "payments", id), { status: "approved" });
     loadData();
   };
 
-  // ❌ Reject payment
   const rejectPayment = async (id) => {
-    await updateDoc(doc(db, "payments", id), {
-      status: "rejected"
-    });
-    alert("Payment Rejected");
+    await updateDoc(doc(db, "payments", id), { status: "rejected" });
     loadData();
   };
 
-  // ✅ Approve editor
   const approveEditor = async (id) => {
-    await updateDoc(doc(db, "editors", id), {
-      approved: true
-    });
-    alert("Editor Approved");
+    await updateDoc(doc(db, "editors", id), { approved: true });
     loadData();
   };
-
-  if (!isAdmin) return <p style={{ textAlign: "center" }}>Checking...</p>;
 
   return (
-    <div style={{
-      padding: "20px",
-      background: "#0f0f0f",
-      color: "white",
-      minHeight: "100vh"
-    }}>
-      <h1>Admin Panel</h1>
+    <div>
+      <h1>Admin</h1>
 
-      {/* 💳 PAYMENTS */}
-      <h2>Payment Requests</h2>
       {payments.map(p => (
-        <div key={p.id} style={{ border: "1px solid #333", margin: "10px", padding: "10px" }}>
-          <p>User: {p.email}</p>
-          <p>Txn: {p.txnId}</p>
-          <p>Status: {p.status}</p>
-
-          {p.status === "pending" && (
-            <>
-              <button onClick={() => approvePayment(p.id)}>Approve</button>
-              <button onClick={() => rejectPayment(p.id)}>Reject</button>
-            </>
-          )}
+        <div key={p.id}>
+          {p.email} - {p.status}
+          <button onClick={()=>approvePayment(p.id)}>Approve</button>
+          <button onClick={()=>rejectPayment(p.id)}>Reject</button>
         </div>
       ))}
 
-      {/* 🎬 EDITORS */}
-      <h2>Editor Profiles</h2>
+      <h2>Editors</h2>
       {editors.map(e => (
-        <div key={e.id} style={{ border: "1px solid #333", margin: "10px", padding: "10px" }}>
-          <p>Name: {e.name}</p>
-          <p>Skills: {e.skills?.join(", ")}</p>
-          <p>Status: {e.approved ? "Approved" : "Pending"}</p>
-
+        <div key={e.id}>
+          {e.name} - {e.approved ? "Yes" : "No"}
           {!e.approved && (
-            <button onClick={() => approveEditor(e.id)}>Approve</button>
+            <button onClick={()=>approveEditor(e.id)}>Approve</button>
           )}
         </div>
       ))}
