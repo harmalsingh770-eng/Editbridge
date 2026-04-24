@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { auth, db } from "../firebase";
+import { auth, db } from "../lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { addDoc, collection } from "firebase/firestore";
 import { useRouter } from "next/router";
@@ -14,7 +14,7 @@ export default function Payment() {
       if (!u) router.push("/login");
       else setUser(u);
     });
-  }, []);
+  }, [router]);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -27,7 +27,7 @@ export default function Payment() {
       createdAt: new Date()
     });
 
-    alert("Submitted");
+    alert("Payment submitted");
   };
 
   return (
