@@ -1,105 +1,147 @@
-// pages/editor/profile.js
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/router'
-import { useAuth } from '../../lib/AuthContext'
-import { getEditorProfile, saveEditorProfile } from '../../lib/db'
-import { Button, Input, Textarea, Card, Badge, Spinner } from '../../components/ui'
-import toast from 'react-hot-toast'
+import { useState, useEffect } from "react";
+import { useRouter } from "next/router";
+import { getAuth } from "firebase/auth";
+import { app } from "../../firebase";
+import {
+  getFirestore,
+  doc,
+  getDoc,
+  setDoc
+} from "firebase/firestore";
 
-export default function EditorProfileEdit() {
-  const { user, profile, loading: authLoading } = useAuth()
-  const router = useRouter()
-  const [saving, setSaving]   = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [form, setForm] = useState({ name: '', bio: '', skills: '', portfolioLinks: '', pricing: '' })
-  const [existingProfile, setExistingProfile] = useState(null)
+export default function EditorProfile() {
+  const router = useRouter();
+  const auth = getAuth(app);
+  const db = getFirestore(app);
 
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const [form, setForm] = useState({
+    name: "",
+    bio: "",
+    skills: "",
+    portfolio: "",
+    price: ""
+  });
+
+  // 🔐 Check login
   useEffect(() => {
-    if (!authLoading && (!user || profile?.role !== 'editor')) {
-      router.push('/')
-    }
-  }, [user, profile, authLoading])
+    const unsub = auth.onAuthStateChanged((u) => {
+      if (!u) {
+        router.push("/login");
+      } else {
+        setUser(u);
+      }
+    });
+    return () => unsub();
+  }, []);
 
+  // 📥 Load existing profile
   useEffect(() => {
-    if (!user) return
-    const p = getEditorProfile(user.uid)
-    setExistingProfile(p)
-    if (p) {
-      setForm({
-        name: p.name || '',
-        bio: p.bio || '',
-        skills: (p.skills || []).join(', '),
-        portfolioLinks: (p.portfolioLinks || []).join('\n'),
-        pricing: p.pricing || '',
-      })
-    } else {
-      setForm(f => ({ ...f, name: profile?.name || '' }))
-    }
-    setLoading(false)
-  }, [user])
+    if (!user) return;
 
-  const handleSave = (e) => {
-    e.preventDefault()
-    setSaving(true)
+    const fetchData = async () => {
+      const ref = doc(db, "editors", user.uid);
+      const snap = await getDoc(ref);
+
+      if (snap.exists()) {
+        const data = snap.data();
+        setForm({
+          name: data.name || "",
+          bio: data.bio || "",
+          skills: (data.skills || []).join(", "),
+          portfolio: (data.portfolio || []).join("\n"),
+          price: data.price || ""
+        });
+      }
+
+      setLoading(false);
+    };
+
+    fetchData();
+  }, [user]);
+
+  // 💾 Save profile
+  const handleSave = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+
     try {
-      saveEditorProfile(user.uid, {
-        name: form.name.trim(),
-        bio: form.bio.trim(),
-        skills: form.skills.split(',').map(s => s.trim()).filter(Boolean),
-        portfolioLinks: form.portfolioLinks.split('\n').map(s => s.trim()).filter(Boolean),
-        pricing: form.pricing,
-      })
-      toast.success('Profile saved! Awaiting admin approval if new.')
-    } catch {
-      toast.error('Failed to save profile')
-    } finally {
-      setSaving(false)
-    }
-  }
+      await setDoc(doc(db, "editors", user.uid), {
+        name: form.name,
+        bio: form.bio,
+        skills: form.skills.split(",").map(s => s.trim()),
+        portfolio: form.portfolio.split("\n").map(s => s.trim()),
+        price: form.price,
+        approved: false // 🔥 admin will approve
+      });
 
-  if (authLoading || loading) return <div className="flex justify-center py-24"><Spinner size="lg" /></div>
+      alert("Profile saved ✅ Waiting for admin approval");
+    } catch (err) {
+      alert(err.message);
+    }
+
+    setSaving(false);
+  };
+
+  if (loading) return <p style={{ textAlign: "center" }}>Loading...</p>;
 
   return (
-    <main className="max-w-2xl mx-auto px-4 py-10 page-enter">
-      <div className="mb-8">
-        <p className="text-xs font-mono uppercase tracking-widest text-cinnabar-500 mb-2">Editor</p>
-        <h1 className="font-display text-4xl text-ink-900">My Profile</h1>
-        <p className="text-ink-500 mt-2 text-sm">
-          Fill in your profile — an admin will review and approve it before it goes public.
-        </p>
-      </div>
+    <div style={{
+      maxWidth: "500px",
+      margin: "auto",
+      padding: "20px",
+      color: "white",
+      background: "#0f0f0f",
+      minHeight: "100vh"
+    }}>
+      <h1>Editor Profile</h1>
 
-      {existingProfile && (
-        <div className="mb-6 flex items-center gap-2">
-          <span className="text-sm text-ink-600">Status:</span>
-          <Badge variant={existingProfile.approved ? 'approved' : 'pending'}>
-            {existingProfile.approved ? 'Approved — Public' : 'Pending admin review'}
-          </Badge>
-        </div>
-      )}
+      <form onSubmit={handleSave}>
 
-      <Card className="p-6">
-        <form onSubmit={handleSave} className="space-y-5">
-          <Input label="Display name" value={form.name}
-            onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-            placeholder="Alex Kumar" required />
-          <Textarea label="Bio" value={form.bio}
-            onChange={e => setForm(f => ({ ...f, bio: e.target.value }))}
-            placeholder="Tell clients about yourself…" rows={5} />
-          <Input label="Skills (comma separated)" value={form.skills}
-            onChange={e => setForm(f => ({ ...f, skills: e.target.value }))}
-            placeholder="Premiere Pro, Color Grading, Motion Graphics" />
-          <Textarea label="Portfolio links (one per line)" value={form.portfolioLinks}
-            onChange={e => setForm(f => ({ ...f, portfolioLinks: e.target.value }))}
-            placeholder={"https://youtube.com/watch?v=...\nhttps://vimeo.com/..."} rows={3} />
-          <Input label="Starting price (₹)" type="number" value={form.pricing}
-            onChange={e => setForm(f => ({ ...f, pricing: e.target.value }))}
-            placeholder="5000" min="0" />
-          <div className="pt-2">
-            <Button type="submit" loading={saving} size="lg">Save profile</Button>
-          </div>
-        </form>
-      </Card>
-    </main>
-  )
+        <input
+          placeholder="Name"
+          value={form.name}
+          onChange={(e) => setForm({ ...form, name: e.target.value })}
+          style={{ width: "100%", marginTop: "10px" }}
+        />
+
+        <textarea
+          placeholder="Bio"
+          value={form.bio}
+          onChange={(e) => setForm({ ...form, bio: e.target.value })}
+          style={{ width: "100%", marginTop: "10px" }}
+        />
+
+        <input
+          placeholder="Skills (comma separated)"
+          value={form.skills}
+          onChange={(e) => setForm({ ...form, skills: e.target.value })}
+          style={{ width: "100%", marginTop: "10px" }}
+        />
+
+        <textarea
+          placeholder="Portfolio links (one per line)"
+          value={form.portfolio}
+          onChange={(e) => setForm({ ...form, portfolio: e.target.value })}
+          style={{ width: "100%", marginTop: "10px" }}
+        />
+
+        <input
+          type="number"
+          placeholder="Price ₹"
+          value={form.price}
+          onChange={(e) => setForm({ ...form, price: e.target.value })}
+          style={{ width: "100%", marginTop: "10px" }}
+        />
+
+        <button type="submit" style={{ marginTop: "10px" }}>
+          {saving ? "Saving..." : "Save Profile"}
+        </button>
+
+      </form>
+    </div>
+  );
 }
