@@ -728,4 +728,155 @@ const s = {
     borderRadius: 10,
     color: "white",
     fontWeight: 600,
- 
+    fontSize: 13,
+  },
+
+  paidBtn: {
+    marginTop: 10,
+    width: "100%",
+    padding: "11px",
+    background: "linear-gradient(135deg, #7c3aed, #6d28d9)",
+    border: "none",
+    borderRadius: 12,
+    color: "white",
+    fontWeight: 700,
+    fontSize: 14,
+    letterSpacing: "-0.2px",
+  },
+
+  paidBadge: {
+    marginTop: 10,
+    textAlign: "center",
+    color: "#10b981",
+    fontWeight: 700,
+    fontSize: 14,
+    padding: "10px",
+    background: "rgba(16, 185, 129, 0.1)",
+    borderRadius: 10,
+    border: "1px solid rgba(16,185,129,0.2)",
+  },
+
+  // Chat
+  chatBox: {
+    flex: 1,
+    overflowY: "auto",
+    padding: "16px 16px 8px",
+  },
+
+  loadingMessages: {
+    height: "100%",
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingTop: 60,
+  },
+
+  emptyState: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingTop: 80,
+    gap: 8,
+  },
+
+  emptyIcon: {
+    fontSize: 48,
+    marginBottom: 8,
+    opacity: 0.4,
+  },
+
+  emptyTitle: {
+    color: "#475569",
+    fontWeight: 600,
+    fontSize: 15,
+  },
+
+  emptySub: {
+    color: "#334155",
+    fontSize: 13,
+  },
+
+  senderLabel: {
+    fontSize: 10,
+    color: "#64748b",
+    marginBottom: 4,
+    marginLeft: 36,
+    letterSpacing: "0.3px",
+  },
+
+  miniAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: 11,
+    fontWeight: 700,
+    color: "white",
+    flexShrink: 0,
+  },
+
+  bubble: {
+    padding: "10px 14px",
+    borderRadius: 18,
+    maxWidth: "72%",
+    wordBreak: "break-word",
+  },
+
+  bubbleText: {
+    fontSize: 14,
+    lineHeight: 1.5,
+    color: "#f1f5f9",
+  },
+
+  bubbleTime: {
+    fontSize: 10,
+    color: "rgba(255,255,255,0.35)",
+    marginTop: 4,
+    textAlign: "right",
+  },
+
+  // Footer
+  footer: {
+    display: "flex",
+    gap: 10,
+    padding: "12px 16px",
+    borderTop: "1px solid rgba(255,255,255,0.06)",
+    background: "rgba(10,15,30,0.85)",
+    backdropFilter: "blur(12px)",
+    flexShrink: 0,
+  },
+
+  inputWrap: {
+    flex: 1,
+    position: "relative",
+  },
+
+  input: {
+    width: "100%",
+    padding: "12px 16px",
+    borderRadius: 14,
+    border: "1px solid rgba(255,255,255,0.08)",
+    background: "rgba(255,255,255,0.05)",
+    color: "white",
+    fontSize: 14,
+    transition: "border-color 0.2s",
+  },
+
+  sendBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    background: "linear-gradient(135deg, #7c3aed, #6d28d9)",
+    border: "none",
+    color: "white",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    boxShadow: "0 4px 15px rgba(124,58,237,0.4)",
+  },
+};
