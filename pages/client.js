@@ -14,13 +14,23 @@ export default function Client() {
       const u = auth.currentUser;
       if (!u) return;
 
-      const snap = await getDoc(doc(db, "users", u.uid));
-      setCredits(snap.data()?.credits || 0);
+      const ref = doc(db, "users", u.uid);
+      const snap = await getDoc(ref);
+
+      if (!snap.exists()) {
+        console.log("User doc missing");
+        return;
+      }
+
+      setCredits(snap.data().credits || 0);
     };
+
     load();
   }, []);
 
   const startChat = () => {
+    if (!auth.currentUser) return;
+
     if (credits < 10) {
       router.push("/payment");
       return;
@@ -32,18 +42,20 @@ export default function Client() {
 
   return (
     <div style={wrap}>
-      
-      {/* 💰 CREDIT FLOAT */}
-      <div style={creditBox}>💰 {credits}</div>
 
-      <h1 style={title}>Editors Marketplace</h1>
+      {/* 💰 CREDIT DISPLAY */}
+      <div style={creditBox}>
+        💰 {credits}
+      </div>
+
+      <h1 style={title}>✨ Editors Marketplace</h1>
 
       <div style={card}>
         <h3>🎬 Pro Video Editor</h3>
         <p>Reels • YouTube • Ads</p>
 
         <button style={btn} onClick={startChat}>
-          Start Chat (-10)
+          Start Chat (-10 credits)
         </button>
       </div>
 
@@ -65,31 +77,35 @@ export default function Client() {
 const wrap = {
   minHeight: "100vh",
   padding: "20px",
-  background: "linear-gradient(135deg,#020617,#0f172a,#4c1d95)",
+  background: "radial-gradient(circle,#020617,#0f172a,#4c1d95)",
   color: "white"
 };
 
 const title = {
   textAlign: "center",
-  marginBottom: "20px",
-  fontSize: "28px"
+  marginBottom: "25px",
+  fontSize: "28px",
+  fontWeight: "bold"
 };
 
 const card = {
   background: "rgba(30,27,75,0.8)",
   padding: "20px",
-  borderRadius: "15px",
-  boxShadow: "0 0 25px rgba(139,92,246,0.5)"
+  borderRadius: "20px",
+  boxShadow: "0 0 30px rgba(139,92,246,0.5)",
+  backdropFilter: "blur(10px)"
 };
 
 const btn = {
-  marginTop: "10px",
+  marginTop: "15px",
   width: "100%",
-  padding: "10px",
+  padding: "12px",
   background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
   border: "none",
-  borderRadius: "10px",
-  color: "white"
+  borderRadius: "12px",
+  color: "white",
+  fontWeight: "bold",
+  cursor: "pointer"
 };
 
 const nav = {
@@ -104,7 +120,8 @@ const navBtn = {
   background: "#22c55e",
   border: "none",
   borderRadius: "10px",
-  color: "white"
+  color: "white",
+  cursor: "pointer"
 };
 
 const creditBox = {
@@ -112,7 +129,8 @@ const creditBox = {
   top: 15,
   right: 15,
   background: "linear-gradient(135deg,#22c55e,#4ade80)",
-  padding: "10px",
-  borderRadius: "10px",
-  fontWeight: "bold"
+  padding: "10px 15px",
+  borderRadius: "12px",
+  fontWeight: "bold",
+  boxShadow: "0 0 10px rgba(34,197,94,0.6)"
 };
