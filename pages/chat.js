@@ -1,50 +1,18 @@
+"use client";
+
 import { useEffect, useState } from "react";
 import { db, auth } from "../lib/firebase";
 import {
   collection,
   addDoc,
-  onSnapshot,
-  runTransaction,
-  doc,
-  getDoc
+  onSnapshot
 } from "firebase/firestore";
-import { useRouter } from "next/router";
 
 export default function Chat() {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
-  const router = useRouter();
 
   useEffect(() => {
-    const checkAndDeduct = async () => {
-      const user = auth.currentUser;
-
-      if (!user) {
-        router.push("/login");
-        return;
-      }
-
-      const ref = doc(db, "users", user.uid);
-
-      await runTransaction(db, async (transaction) => {
-        const snap = await transaction.get(ref);
-
-        let credits = snap.data().credits || 0;
-
-        if (credits < 10) {
-          alert("No credits");
-          router.push("/payment");
-          throw "no credits";
-        }
-
-        transaction.update(ref, {
-          credits: credits - 10
-        });
-      });
-    };
-
-    checkAndDeduct();
-
     const unsub = onSnapshot(collection(db, "messages"), (snap) => {
       setMessages(snap.docs.map(d => d.data()));
     });
@@ -55,21 +23,58 @@ export default function Chat() {
   const send = async () => {
     await addDoc(collection(db, "messages"), {
       text,
-      user: auth.currentUser.email
+      user: auth.currentUser?.email
     });
     setText("");
   };
 
   return (
-    <div style={{ padding: 20 }}>
+    <div style={wrap}>
       <h1>Chat</h1>
 
-      {messages.map((m, i) => (
-        <p key={i}><b>{m.user}:</b> {m.text}</p>
-      ))}
+      <div style={chatBox}>
+        {messages.map((m, i) => (
+          <p key={i}>
+            <b>{m.user}</b>: {m.text}
+          </p>
+        ))}
+      </div>
 
-      <input value={text} onChange={(e)=>setText(e.target.value)} />
-      <button onClick={send}>Send</button>
+      <input value={text} onChange={(e)=>setText(e.target.value)} style={input}/>
+      <button onClick={send} style={btn}>Send</button>
     </div>
   );
 }
+
+const wrap = {
+  minHeight: "100vh",
+  padding: "20px",
+  background: "linear-gradient(135deg,#020617,#0f172a,#4c1d95)",
+  color: "white"
+};
+
+const chatBox = {
+  height: "300px",
+  overflow: "auto",
+  background: "#111",
+  padding: "10px",
+  borderRadius: "10px"
+};
+
+const input = {
+  width: "100%",
+  marginTop: "10px",
+  padding: "10px",
+  borderRadius: "10px",
+  border: "none"
+};
+
+const btn = {
+  width: "100%",
+  marginTop: "10px",
+  padding: "10px",
+  background: "#6366f1",
+  border: "none",
+  borderRadius: "10px",
+  color: "white"
+};
