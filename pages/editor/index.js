@@ -4,127 +4,107 @@ import { auth, db } from "../../lib/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 
-export default function EditorDashboard() {
+export default function Editor() {
   const router = useRouter();
 
-  const [user, setUser] = useState(null);
-  const [editor, setEditor] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [user,setUser] = useState(null);
+  const [editor,setEditor] = useState(null);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (u) => {
-      try {
-        if (!u) {
-          router.push("/editor-login");
-          return;
-        }
-
-        setUser(u);
-
-        const snap = await getDoc(doc(db, "editors", u.uid));
-
-        if (!snap.exists()) {
-          alert("Editor account not found.");
-          router.push("/editor-login");
-          return;
-        }
-
-        const data = snap.data();
-
-        if (!data.approved) {
-          alert("Your account is pending approval.");
-          router.push("/editor-login");
-          return;
-        }
-
-        setEditor(data);
-      } catch (err) {
-        console.log(err);
+    const unsub = onAuthStateChanged(auth, async(u)=>{
+      if(!u){
         router.push("/editor-login");
+        return;
       }
 
-      setLoading(false);
+      setUser(u);
+
+      const snap = await getDoc(doc(db,"editors",u.uid));
+
+      if(!snap.exists()){
+        router.push("/editor-login");
+        return;
+      }
+
+      setEditor(snap.data());
     });
 
-    return () => unsub();
-  }, [router]);
+    return ()=>unsub();
+  },[]);
 
-  const logout = async () => {
+  const logout = async()=>{
     await signOut(auth);
-    router.push("/editor-login");
+    router.push("/");
   };
 
-  if (loading) {
-    return (
-      <div style={{
-        minHeight: "100vh",
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        background: "#0f172a",
-        color: "white"
-      }}>
-        Loading Dashboard...
-      </div>
-    );
-  }
+  if(!editor) return <p style={{padding:30}}>Loading...</p>;
 
   return (
-    <div style={{
-      minHeight: "100vh",
-      padding: "40px",
-      background: "linear-gradient(135deg,#0f172a,#312e81,#581c87)",
-      color: "white"
-    }}>
-      <h1 style={{ fontSize: "34px" }}>🎬 Editor Dashboard</h1>
+    <div style={page}>
+      <h1>🎬 Editor Dashboard</h1>
 
-      <div style={{
-        marginTop: "30px",
-        padding: "25px",
-        borderRadius: "18px",
-        background: "rgba(255,255,255,0.08)"
-      }}>
-        <h2>{editor?.name}</h2>
-        <p>Email: {user?.email}</p>
-        <p>Status: Approved ✅</p>
-        <p>Skills: {editor?.skills?.join(", ")}</p>
-        <p>Price: ₹{editor?.price}</p>
+      <div style={card}>
+        <h2>{editor.name}</h2>
+        <p>{user.email}</p>
+        <p>Skills: {editor.skills?.join(", ")}</p>
+        <p>Price: ₹{editor.price}</p>
+        <p>Status: {editor.active ? "🟢 Online" : "🔴 Offline"}</p>
       </div>
 
-      <div style={{ marginTop: "25px" }}>
-        <button
-          onClick={() => router.push(`/chat/admin_${user.uid}`)}
-          style={btn}
-        >
-          💬 Chat With Admin
+      <div style={{display:"grid",gap:"14px",marginTop:"25px"}}>
+
+        <button style={btnPurple}
+          onClick={()=>router.push("/editor/inbox")}>
+          📩 Inbox
         </button>
 
-        <button
-          onClick={logout}
-          style={btn2}
-        >
+        <button style={btnBlue}
+          onClick={()=>router.push("/profile")}>
+          ⚙️ Settings
+        </button>
+
+        <button style={btnGreen}
+          onClick={()=>router.push(`/chat/admin_${user.uid}`)}>
+          💬 Chat Admin
+        </button>
+
+        <button style={btnRed}
+          onClick={logout}>
           Logout
         </button>
+
       </div>
     </div>
   );
 }
 
-const btn = {
-  padding: "14px 20px",
-  border: "none",
-  borderRadius: "12px",
-  background: "#7c3aed",
-  color: "white",
-  marginRight: "10px",
-  cursor: "pointer"
+const page={
+minHeight:"100vh",
+padding:"40px",
+background:"linear-gradient(135deg,#0f172a,#1e1b4b,#581c87)",
+color:"white"
 };
 
-const btn2 = {
-  padding: "14px 20px",
-  border: "none",
-  borderRadius: "12px",
-  background: "#ef4444",
-  color: "white",
-  cursor: "pointer"
+const card={
+padding:"25px",
+borderRadius:"18px",
+background:"rgba(255,255,255,0.08)",
+marginTop:"25px"
 };
+
+const btnPurple=btn("#8b5cf6");
+const btnBlue=btn("#06b6d4");
+const btnGreen=btn("#10b981");
+const btnRed=btn("#ef4444");
+
+function btn(bg){
+return{
+padding:"14px",
+border:"none",
+borderRadius:"12px",
+background:bg,
+color:"white",
+fontWeight:"bold",
+cursor:"pointer"
+};
+}
