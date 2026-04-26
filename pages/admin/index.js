@@ -7,7 +7,8 @@ import {
   getDocs,
   updateDoc,
   deleteDoc,
-  doc
+  doc,
+  getDoc
 } from "firebase/firestore";
 
 export default function Admin() {
@@ -64,11 +65,42 @@ export default function Admin() {
     return () => unsub();
   }, [router, loadData]);
 
-  const approvePayment = async (id) => {
-    await updateDoc(doc(db, "payments", id), {
-      status: "approved"
-    });
-    loadData();
+  // 🔥 FIXED APPROVE PAYMENT (adds credits)
+  const approvePayment = async (payment) => {
+    try {
+      if (payment.status === "approved") {
+        alert("Already approved");
+        return;
+      }
+
+      // update payment status
+      await updateDoc(doc(db, "payments", payment.id), {
+        status: "approved"
+      });
+
+      // get user
+      const userRef = doc(db, "users", payment.userId);
+      const userSnap = await getDoc(userRef);
+
+      if (!userSnap.exists()) {
+        alert("User not found");
+        return;
+      }
+
+      const currentCredits = userSnap.data().credits || 0;
+
+      // add credits (₹10 = 50 credits)
+      await updateDoc(userRef, {
+        credits: currentCredits + 50
+      });
+
+      alert("✅ Payment approved & credits added");
+
+      loadData();
+    } catch (err) {
+      console.log(err);
+      alert("Error approving payment");
+    }
   };
 
   const rejectPayment = async (id) => {
@@ -101,7 +133,7 @@ export default function Admin() {
   };
 
   const openChat = (id) => {
-    router.push(`/chat/${id}`);
+    router.push(`/chat?room=admin_${id}`);
   };
 
   if (loading)
@@ -163,7 +195,7 @@ export default function Admin() {
                 <div style={styles.row}>
                   <button
                     style={styles.greenBtn}
-                    onClick={() => approvePayment(p.id)}
+                    onClick={() => approvePayment(p)} // 🔥 FIX
                   >
                     Approve
                   </button>
@@ -197,13 +229,11 @@ export default function Admin() {
                 <p>{e.price}</p>
 
                 <p>
-                  Status:{" "}
-                  {e.approved ? "Approved" : "Pending"}
+                  Status: {e.approved ? "Approved" : "Pending"}
                 </p>
 
                 <p>
-                  Active:{" "}
-                  {e.active ? "Online" : "Offline"}
+                  Active: {e.active ? "Online" : "Offline"}
                 </p>
               </div>
 
@@ -248,6 +278,7 @@ export default function Admin() {
   );
 }
 
+/* 🎨 SAME UI (not downgraded) */
 const styles = {
   page: {
     minHeight: "100vh",
