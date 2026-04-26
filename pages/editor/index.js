@@ -13,23 +13,36 @@ export default function EditorDashboard() {
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
-      if (!u) {
+      try {
+        if (!u) {
+          router.push("/editor-login");
+          return;
+        }
+
+        setUser(u);
+
+        const snap = await getDoc(doc(db, "editors", u.uid));
+
+        if (!snap.exists()) {
+          alert("Editor account not found.");
+          router.push("/editor-login");
+          return;
+        }
+
+        const data = snap.data();
+
+        if (!data.approved) {
+          alert("Your account is pending approval.");
+          router.push("/editor-login");
+          return;
+        }
+
+        setEditor(data);
+      } catch (err) {
+        console.log(err);
         router.push("/editor-login");
-        return;
       }
 
-      setUser(u);
-
-      const ref = doc(db, "editors", u.uid);
-      const snap = await getDoc(ref);
-
-      if (!snap.exists()) {
-        alert("Editor profile not found");
-        router.push("/");
-        return;
-      }
-
-      setEditor(snap.data());
       setLoading(false);
     });
 
@@ -41,32 +54,41 @@ export default function EditorDashboard() {
     router.push("/editor-login");
   };
 
-  if (loading) return <p style={{ padding: 30 }}>Loading...</p>;
+  if (loading) {
+    return (
+      <div style={{
+        minHeight: "100vh",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        background: "#0f172a",
+        color: "white"
+      }}>
+        Loading Dashboard...
+      </div>
+    );
+  }
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        padding: "40px",
-        background: "linear-gradient(135deg,#0f172a,#312e81,#581c87)",
-        color: "white"
-      }}
-    >
-      <h1>🎬 Editor Dashboard</h1>
+    <div style={{
+      minHeight: "100vh",
+      padding: "40px",
+      background: "linear-gradient(135deg,#0f172a,#312e81,#581c87)",
+      color: "white"
+    }}>
+      <h1 style={{ fontSize: "34px" }}>🎬 Editor Dashboard</h1>
 
-      <div
-        style={{
-          marginTop: "30px",
-          padding: "25px",
-          borderRadius: "18px",
-          background: "rgba(255,255,255,0.08)"
-        }}
-      >
-        <h2>{editor.name || "Editor"}</h2>
-        <p>Email: {user.email}</p>
-        <p>Status: {editor.approved ? "Approved ✅" : "Pending ⏳"}</p>
-        <p>Skills: {editor.skills?.join(", ")}</p>
-        <p>Price: ₹{editor.price}</p>
+      <div style={{
+        marginTop: "30px",
+        padding: "25px",
+        borderRadius: "18px",
+        background: "rgba(255,255,255,0.08)"
+      }}>
+        <h2>{editor?.name}</h2>
+        <p>Email: {user?.email}</p>
+        <p>Status: Approved ✅</p>
+        <p>Skills: {editor?.skills?.join(", ")}</p>
+        <p>Price: ₹{editor?.price}</p>
       </div>
 
       <div style={{ marginTop: "25px" }}>
@@ -77,7 +99,10 @@ export default function EditorDashboard() {
           💬 Chat With Admin
         </button>
 
-        <button onClick={logout} style={btn2}>
+        <button
+          onClick={logout}
+          style={btn2}
+        >
           Logout
         </button>
       </div>
