@@ -10,44 +10,58 @@ export default function Client() {
   const router = useRouter();
 
   useEffect(() => {
-    const fetchCredits = async () => {
-      const user = auth.currentUser;
-      if (!user) return;
+    const load = async () => {
+      const u = auth.currentUser;
+      if (!u) return;
 
-      const snap = await getDoc(doc(db, "users", user.uid));
+      const snap = await getDoc(doc(db, "users", u.uid));
       setCredits(snap.data()?.credits || 0);
     };
-
-    fetchCredits();
+    load();
   }, []);
+
+  const startChat = () => {
+    if (credits < 10) {
+      router.push("/payment");
+      return;
+    }
+
+    const room = auth.currentUser.uid + "_editor1";
+    router.push(`/chat?room=${room}`);
+  };
 
   return (
     <div style={wrap}>
       
       {/* 💰 CREDIT FLOAT */}
-      <div style={creditBox}>
-        💰 {credits} Credits
-      </div>
+      <div style={creditBox}>💰 {credits}</div>
 
-      <h1 style={title}>Editors Portfolio</h1>
+      <h1 style={title}>Editors Marketplace</h1>
 
       <div style={card}>
-        <h3>Video Editor</h3>
-        <p>Reels + YouTube editing</p>
+        <h3>🎬 Pro Video Editor</h3>
+        <p>Reels • YouTube • Ads</p>
 
-        <button style={btn} onClick={() => router.push("/chat")}>
-          Start Chat (-10 credits)
+        <button style={btn} onClick={startChat}>
+          Start Chat (-10)
         </button>
       </div>
 
-      <button style={payBtn} onClick={() => router.push("/payment")}>
-        Buy Credits
-      </button>
+      <div style={nav}>
+        <button style={navBtn} onClick={()=>router.push("/payment")}>
+          Buy Credits
+        </button>
+
+        <button style={navBtn} onClick={()=>router.push("/inbox")}>
+          Inbox
+        </button>
+      </div>
 
     </div>
   );
 }
 
+/* UI */
 const wrap = {
   minHeight: "100vh",
   padding: "20px",
@@ -57,32 +71,39 @@ const wrap = {
 
 const title = {
   textAlign: "center",
-  marginBottom: "20px"
+  marginBottom: "20px",
+  fontSize: "28px"
 };
 
 const card = {
   background: "rgba(30,27,75,0.8)",
   padding: "20px",
   borderRadius: "15px",
-  marginBottom: "15px",
-  boxShadow: "0 0 20px rgba(139,92,246,0.4)"
+  boxShadow: "0 0 25px rgba(139,92,246,0.5)"
 };
 
 const btn = {
-  background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
-  color: "white",
+  marginTop: "10px",
+  width: "100%",
   padding: "10px",
+  background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
+  border: "none",
   borderRadius: "10px",
-  border: "none"
+  color: "white"
 };
 
-const payBtn = {
+const nav = {
   marginTop: "20px",
-  width: "100%",
-  padding: "12px",
+  display: "flex",
+  gap: "10px"
+};
+
+const navBtn = {
+  flex: 1,
+  padding: "10px",
   background: "#22c55e",
-  borderRadius: "10px",
   border: "none",
+  borderRadius: "10px",
   color: "white"
 };
 
@@ -93,6 +114,5 @@ const creditBox = {
   background: "linear-gradient(135deg,#22c55e,#4ade80)",
   padding: "10px",
   borderRadius: "10px",
-  fontWeight: "bold",
-  boxShadow: "0 0 15px rgba(34,197,94,0.6)"
+  fontWeight: "bold"
 };
