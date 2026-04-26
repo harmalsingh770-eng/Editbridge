@@ -5,47 +5,105 @@ import { db, auth } from "../lib/firebase";
 import {
   collection,
   addDoc,
-  onSnapshot
+  onSnapshot,
+  deleteDoc,
+  doc,
+  runTransaction
 } from "firebase/firestore";
+import { useRouter } from "next/router";
 
 export default function Chat() {
-  const [messages, setMessages] = useState([]);
+  const [msgs, setMsgs] = useState([]);
   const [text, setText] = useState("");
+  const router = useRouter();
 
+  const room = router.query.room;
+
+  // 🔐 CREDIT CHECK
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, "messages"), (snap) => {
-      setMessages(snap.docs.map(d => d.data()));
-    });
+    const run = async () => {
+      const ref = doc(db, "users", auth.currentUser.uid);
 
-    return () => unsub();
-  }, []);
+      await runTransaction(db, async (t) => {
+        const snap = await t.get(ref);
+        let c = snap.data()?.credits || 0;
+
+        if (c < 10) {
+          router.push("/payment");
+          throw "no credit";
+        }
+
+        t.update(ref, { credits: c - 10 });
+      });
+    };
+
+    if (room) run();
+  }, [room]);
+
+  // 📡 LOAD CHAT
+  useEffect(() => {
+    if (!room) return;
+
+    return onSnapshot(
+      collection(db, "chats", room, "messages"),
+      (s) => setMsgs(s.docs.map(d => ({ id: d.id, ...d.data() })))
+    );
+  }, [room]);
 
   const send = async () => {
-    await addDoc(collection(db, "messages"), {
+    if (!text) return;
+
+    await addDoc(collection(db, "chats", room, "messages"), {
       text,
-      user: auth.currentUser?.email
+      user: auth.currentUser.email
     });
+
     setText("");
+  };
+
+  const del = async (id) => {
+    await deleteDoc(doc(db, "chats", room, "messages", id));
+  };
+
+  const clear = async () => {
+    if (!confirm("Clear chat?")) return;
+    msgs.forEach(m => del(m.id));
   };
 
   return (
     <div style={wrap}>
-      <h1>Chat</h1>
+      
+      <h1>💬 Private Chat</h1>
+
+      <button onClick={clear} style={clearBtn}>
+        Clear Chat
+      </button>
 
       <div style={chatBox}>
-        {messages.map((m, i) => (
-          <p key={i}>
-            <b>{m.user}</b>: {m.text}
-          </p>
+        {msgs.map(m => (
+          <div key={m.id} style={msgRow}>
+            <span><b>{m.user}</b>: {m.text}</span>
+            <button onClick={()=>del(m.id)} style={delBtn}>❌</button>
+          </div>
         ))}
       </div>
 
-      <input value={text} onChange={(e)=>setText(e.target.value)} style={input}/>
-      <button onClick={send} style={btn}>Send</button>
+      <input
+        value={text}
+        onChange={e=>setText(e.target.value)}
+        style={input}
+        placeholder="Type message..."
+      />
+
+      <button onClick={send} style={sendBtn}>
+        Send
+      </button>
+
     </div>
   );
 }
 
+/* UI */
 const wrap = {
   minHeight: "100vh",
   padding: "20px",
@@ -54,11 +112,35 @@ const wrap = {
 };
 
 const chatBox = {
-  height: "300px",
+  height: "320px",
   overflow: "auto",
   background: "#111",
   padding: "10px",
-  borderRadius: "10px"
+  borderRadius: "10px",
+  marginTop: "10px"
+};
+
+const msgRow = {
+  display: "flex",
+  justifyContent: "space-between",
+  marginBottom: "8px",
+  background: "#1e1b4b",
+  padding: "8px",
+  borderRadius: "8px"
+};
+
+const delBtn = {
+  background: "transparent",
+  border: "none",
+  color: "#ef4444"
+};
+
+const clearBtn = {
+  background: "#ef4444",
+  padding: "8px",
+  borderRadius: "8px",
+  border: "none",
+  color: "white"
 };
 
 const input = {
@@ -69,7 +151,7 @@ const input = {
   border: "none"
 };
 
-const btn = {
+const sendBtn = {
   width: "100%",
   marginTop: "10px",
   padding: "10px",
