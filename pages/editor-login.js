@@ -3,8 +3,12 @@ import { useRouter } from "next/router";
 import {
   signInWithEmailAndPassword
 } from "firebase/auth";
+import {
+  doc,
+  getDoc
+} from "firebase/firestore";
+
 import { auth, db } from "../lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
 
 export default function EditorLogin() {
   const router = useRouter();
@@ -12,20 +16,16 @@ export default function EditorLogin() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  const loginEditor = async (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
 
     try {
-      const userCred = await signInWithEmailAndPassword(
-        auth,
-        email,
-        password
-      );
+      const res = await signInWithEmailAndPassword(auth, email, password);
 
-      const user = userCred.user;
+      const uid = res.user.uid;
 
-      const ref = doc(db, "editors", user.uid);
-      const snap = await getDoc(ref);
+      // check editor profile
+      const snap = await getDoc(doc(db, "editors", uid));
 
       if (!snap.exists()) {
         alert("Editor profile not found");
@@ -35,10 +35,11 @@ export default function EditorLogin() {
       const data = snap.data();
 
       if (!data.approved) {
-        alert("Waiting for admin approval");
+        alert("Your account is pending approval");
         return;
       }
 
+      // success
       router.push("/editor");
 
     } catch (err) {
@@ -48,59 +49,45 @@ export default function EditorLogin() {
 
   return (
     <div style={{
-      minHeight:"100vh",
-      display:"flex",
-      justifyContent:"center",
-      alignItems:"center",
-      background:"linear-gradient(135deg,#0f172a,#581c87)",
-      color:"white"
+      minHeight: "100vh",
+      background: "#0f172a",
+      color: "white",
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center"
     }}>
-      <form onSubmit={loginEditor}
-      style={{
-        width:"350px",
-        padding:"30px",
-        background:"rgba(255,255,255,0.05)",
-        borderRadius:"20px",
-        backdropFilter:"blur(12px)"
+      <form onSubmit={handleLogin} style={{
+        background: "#1e293b",
+        padding: "30px",
+        borderRadius: "15px",
+        width: "350px"
       }}>
-        <h1>🎬 Editor Login</h1>
+        <h1>Editor Login</h1>
 
         <input
           placeholder="Email"
           onChange={(e)=>setEmail(e.target.value)}
-          style={input}
+          style={{width:"100%",padding:"10px",marginTop:"10px"}}
         />
 
         <input
           type="password"
           placeholder="Password"
           onChange={(e)=>setPassword(e.target.value)}
-          style={input}
+          style={{width:"100%",padding:"10px",marginTop:"10px"}}
         />
 
-        <button style={btn}>
-          Login as Editor
+        <button style={{
+          width:"100%",
+          padding:"10px",
+          marginTop:"15px",
+          background:"purple",
+          color:"white",
+          border:"none"
+        }}>
+          Login
         </button>
       </form>
     </div>
   );
 }
-
-const input = {
-  width:"100%",
-  padding:"12px",
-  marginTop:"12px",
-  borderRadius:"10px",
-  border:"none"
-};
-
-const btn = {
-  width:"100%",
-  padding:"12px",
-  marginTop:"18px",
-  border:"none",
-  borderRadius:"10px",
-  background:"#7c3aed",
-  color:"white",
-  fontWeight:"bold"
-};
