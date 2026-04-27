@@ -15,15 +15,18 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
+  const role = type === "editor" ? "editor" : "client";
+
   const login = async () => {
     try {
       const userCred = await signInWithEmailAndPassword(auth, email, password);
       const snap = await getDoc(doc(db, "users", userCred.user.uid));
 
-      const role = snap.data()?.role;
+      const userRole = snap.data()?.role;
 
-      if (role === "editor") router.push("/editor");
+      if (userRole === "editor") router.push("/editor");
       else router.push("/client");
+
     } catch (err) {
       alert(err.message);
     }
@@ -33,14 +36,13 @@ export default function Login() {
     try {
       const userCred = await createUserWithEmailAndPassword(auth, email, password);
 
-      const role = type === "editor" ? "editor" : "client";
-
       await setDoc(doc(db, "users", userCred.user.uid), {
         email,
         role
       });
 
       router.push(role === "editor" ? "/editor" : "/client");
+
     } catch (err) {
       alert(err.message);
     }
@@ -51,7 +53,7 @@ export default function Login() {
       <HomeButton />
 
       <div style={card}>
-        <h1>🚀 Login</h1>
+        <h1>{role === "editor" ? "🎬 Editor Login" : "🚀 Client Login"}</h1>
 
         <input placeholder="Email" onChange={(e)=>setEmail(e.target.value)} style={input}/>
         <input type="password" placeholder="Password" onChange={(e)=>setPassword(e.target.value)} style={input}/>
