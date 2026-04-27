@@ -1,9 +1,9 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { auth, db } from "../../lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import {
-  collection, getDocs, updateDoc, deleteDoc, doc, onSnapshot
+  collection, updateDoc, deleteDoc, doc, onSnapshot, setDoc
 } from "firebase/firestore";
 
 export default function Admin() {
@@ -18,8 +18,8 @@ export default function Admin() {
       if (!user) { router.push("/login"); return; }
       if (user.email !== "admin@editbridge.com") { router.push("/"); return; }
 
-      // Live payments listener
-      const unsubPay = onSnapshot(collection(db, "payments"), (snap) => {
+      // Live payments listener — reads from "paymentRequests" (what client writes to)
+      const unsubPay = onSnapshot(collection(db, "paymentRequests"), (snap) => {
         setPayments(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
       });
 
@@ -34,13 +34,35 @@ export default function Admin() {
     return () => unsub();
   }, []);
 
+  // ✅ FIX: Also update clientAccess so client dashboard updates in real-time
   const approvePayment = async (p) => {
     if (p.status === "approved") return alert("Already approved");
-    await updateDoc(doc(db, "payments", p.id), { status: "approved" });
+
+    // 1. Update the paymentRequest status
+    await updateDoc(doc(db, "paymentRequests", p.id), { status: "approved" });
+
+    // 2. Update clientAccess so the client dashboard unlocks immediately
+    await setDoc(doc(db, "clientAccess", p.uid), {
+      uid: p.uid,
+      email: p.email,
+      txnId: p.txnId,
+      status: "approved",
+      approvedAt: new Date(),
+    });
   };
 
-  const rejectPayment = async (id) => {
-    await updateDoc(doc(db, "payments", id), { status: "rejected" });
+  const rejectPayment = async (p) => {
+    // 1. Update the paymentRequest status
+    await updateDoc(doc(db, "paymentRequests", p.id), { status: "rejected" });
+
+    // 2. Update clientAccess so client sees "rejected"
+    await setDoc(doc(db, "clientAccess", p.uid), {
+      uid: p.uid,
+      email: p.email,
+      txnId: p.txnId,
+      status: "rejected",
+      rejectedAt: new Date(),
+    });
   };
 
   const approveEditor = async (id) => {
@@ -56,7 +78,6 @@ export default function Admin() {
     await deleteDoc(doc(db, "editors", id));
   };
 
-  // FIXED: correct chat URL format
   const openChat = (editorId) => {
     router.push(`/chat/admin_${editorId}`);
   };
@@ -138,6 +159,7 @@ export default function Admin() {
                           <div style={s.cardTitle}>{p.email}</div>
                           <div style={s.cardSub}>Txn ID: {p.txnId}</div>
                           <div style={s.cardSub}>Amount: ₹{p.amount}</div>
+                          <div style={s.cardSub}>UID: {p.uid}</div>
                         </div>
                         <div style={{
                           ...s.statusBadge,
@@ -152,7 +174,7 @@ export default function Admin() {
                       {p.status === "pending" && (
                         <div style={s.btnRow}>
                           <button style={s.greenBtn} onClick={() => approvePayment(p)}>✓ Approve</button>
-                          <button style={s.redBtn} onClick={() => rejectPayment(p.id)}>✕ Reject</button>
+                          <button style={s.redBtn} onClick={() => rejectPayment(p)}>✕ Reject</button>
                         </div>
                       )}
                     </div>
@@ -229,34 +251,28 @@ const s = {
   page: { minHeight: "100vh", background: "linear-gradient(160deg,#080d1a,#0f172a,#160a2a)", color: "white", paddingBottom: 60 },
   loadingScreen: { height: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#080d1a", color: "white" },
   spinner: { width: 32, height: 32, border: "3px solid rgba(124,58,237,0.15)", borderTopColor: "#7c3aed", borderRadius: "50%", animation: "spin 0.75s linear infinite" },
-
   header: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 20px", borderBottom: "1px solid rgba(255,255,255,0.05)", background: "rgba(8,13,26,0.9)", backdropFilter: "blur(14px)", position: "sticky", top: 0, zIndex: 20 },
   logoWrap: { display: "flex", alignItems: "center", gap: 11 },
   logoIcon: { width: 40, height: 40, borderRadius: 12, background: "linear-gradient(135deg,#ef4444,#dc2626)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 },
   logoText: { fontWeight: 800, fontSize: 16 },
   logoBadge: { fontSize: 11, color: "#64748b", marginTop: 2 },
   logoutBtn: { padding: "8px 14px", background: "#ef4444", border: "none", borderRadius: 10, color: "white", fontWeight: 600, fontSize: 13 },
-
   statsGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, padding: "16px 20px" },
   statCard: { background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 14, padding: "16px", textAlign: "center" },
   statNum: { fontWeight: 800, fontSize: 26, letterSpacing: "-0.5px" },
   statLabel: { fontSize: 11, color: "#64748b", marginTop: 4 },
-
   tabs: { display: "flex", gap: 8, padding: "0 20px 16px" },
   tab: { flex: 1, padding: "10px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, color: "#64748b", fontWeight: 600, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 },
   tabActive: { background: "rgba(124,58,237,0.15)", borderColor: "rgba(124,58,237,0.3)", color: "#a78bfa" },
   badge: { background: "#ef4444", color: "white", borderRadius: 10, padding: "1px 6px", fontSize: 10, fontWeight: 700 },
-
   content: { padding: "0 20px" },
   empty: { textAlign: "center", padding: "60px 20px" },
-
   card: { background: "rgba(15,23,42,0.9)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 16, padding: "16px", marginBottom: 12 },
   cardTop: { display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 12 },
   cardAvatar: { width: 42, height: 42, borderRadius: 12, background: "linear-gradient(135deg,#7c3aed,#3b82f6)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 16, color: "white", flexShrink: 0 },
   cardTitle: { fontWeight: 700, fontSize: 14 },
   cardSub: { fontSize: 12, color: "#64748b", marginTop: 3 },
   statusBadge: { fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 8, whiteSpace: "nowrap", flexShrink: 0 },
-
   btnRow: { display: "flex", gap: 8, flexWrap: "wrap" },
   greenBtn: { padding: "8px 14px", background: "#10b981", border: "none", borderRadius: 9, color: "white", fontWeight: 600, fontSize: 12 },
   redBtn: { padding: "8px 14px", background: "#ef4444", border: "none", borderRadius: 9, color: "white", fontWeight: 600, fontSize: 12 },
