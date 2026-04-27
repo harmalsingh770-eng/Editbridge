@@ -1,74 +1,87 @@
 import { useRouter } from "next/router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
+  createUserWithEmailAndPassword
 } from "firebase/auth";
 import { auth, db } from "../lib/firebase";
-import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, getDoc } from "firebase/firestore";
+import HomeButton from "../components/HomeButton";
 
 export default function Login() {
   const router = useRouter();
-  const { type } = router.query;
 
+  const [role, setRole] = useState(null); // 🔥 FIX
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
 
-  const role = type === "editor" ? "editor" : "client";
+  // ✅ wait for router
+  useEffect(() => {
+    if (!router.isReady) return;
 
-  // ✅ FIX: Wrapped in try/catch with loading state + error display
+    const type = router.query.type;
+
+    if (type === "editor") setRole("editor");
+    else setRole("client");
+  }, [router.isReady]);
+
+  // ⛔ prevent blank UI
+  if (!role) {
+    return (
+      <div style={s.loader}>
+        Loading...
+      </div>
+    );
+  }
+
+  // ================= LOGIN =================
   const login = async () => {
-    if (!email || !password) return setError("Fill in all fields");
-    setError("");
+    if (!email || !password) return alert("Enter all fields");
+
     setLoading(true);
 
     try {
-      const userCred = await signInWithEmailAndPassword(auth, email, password);
-      const uid = userCred.user.uid;
+      const res = await signInWithEmailAndPassword(auth, email, password);
+      const uid = res.user.uid;
 
-      const userSnap = await getDoc(doc(db, "users", uid));
+      if (role === "editor") {
+        const snap = await getDoc(doc(db, "editors", uid));
 
-      if (!userSnap.exists()) {
-        setError("User data missing. Please sign up.");
-        setLoading(false);
-        return;
-      }
+        if (!snap.exists()) {
+          alert("Editor profile not found");
+          setLoading(false);
+          return;
+        }
 
-      const userRole = userSnap.data().role;
+        if (!snap.data().approved) {
+          alert("Waiting for admin approval");
+          setLoading(false);
+          return;
+        }
 
-      if (userRole === "editor") {
-        router.push("/editor");
-      } else if (userRole === "admin") {
-        router.push("/admin");
+        router.replace("/editor");
       } else {
-        router.push("/client");
+        router.replace("/client");
       }
+
     } catch (err) {
-      setError(err.message.replace("Firebase: ", ""));
-      setLoading(false);
+      alert(err.message);
     }
+
+    setLoading(false);
   };
 
-  // ✅ FIX: Added createdAt timestamp + try/catch
+  // ================= SIGNUP =================
   const signup = async () => {
-    if (!email || !password) return setError("Fill in all fields");
-    setError("");
+    if (!email || !password) return alert("Enter all fields");
+
     setLoading(true);
 
     try {
-      const userCred = await createUserWithEmailAndPassword(auth, email, password);
-      const uid = userCred.user.uid;
+      const res = await createUserWithEmailAndPassword(auth, email, password);
+      const uid = res.user.uid;
 
-      // 🔥 USERS COLLECTION
-      await setDoc(doc(db, "users", uid), {
-        email,
-        role,
-        createdAt: serverTimestamp(),
-      });
-
-      // 🔥 IF EDITOR → CREATE EDITOR PROFILE
       if (role === "editor") {
         await setDoc(doc(db, "editors", uid), {
           email,
@@ -77,52 +90,68 @@ export default function Login() {
           price: 0,
           approved: false,
           active: false,
+          createdAt: new Date()
         });
 
-        router.push("/editor"); // ✅ FIX: Go to editor page which shows pending screen
-        return;
+        alert("Editor account created. Wait for admin approval.");
+      } else {
+        await setDoc(doc(db, "users", uid), {
+          email,
+          role: "client",
+          createdAt: new Date()
+        });
+
+        router.replace("/client");
       }
 
-      router.push("/client");
     } catch (err) {
-      setError(err.message.replace("Firebase: ", ""));
-      setLoading(false);
+      alert(err.message);
     }
+
+    setLoading(false);
   };
 
   return (
     <div style={s.page}>
-      <div style={s.card}>
-        <div style={s.icon}>{role === "editor" ? "🎬" : "👤"}</div>
-        <h1 style={s.title}>{role.toUpperCase()} LOGIN</h1>
+      <HomeButton />
 
-        {error && <div style={s.error}>{error}</div>}
+      <div style={s.card}>
+        <h1 style={s.title}>
+          {role === "editor" ? "🎬 Editor Login" : "🚀 Client Login"}
+        </h1>
 
         <input
           placeholder="Email"
-          value={email}
           onChange={(e) => setEmail(e.target.value)}
           style={s.input}
-          type="email"
         />
+
         <input
           type="password"
           placeholder="Password"
-          value={password}
           onChange={(e) => setPassword(e.target.value)}
           style={s.input}
         />
 
-        <button onClick={login} style={s.btnPrimary} disabled={loading}>
-          {loading ? "..." : "Login"}
-        </button>
-        <button onClick={signup} style={s.btnSecondary} disabled={loading}>
-          {loading ? "..." : "Sign Up"}
+        <button onClick={login} style={s.btn} disabled={loading}>
+          {loading ? "Loading..." : "Login"}
         </button>
 
-        <button onClick={() => router.push("/")} style={s.backLink}>
-          ← Back to Home
+        <button onClick={signup} style={s.signup} disabled={loading}>
+          Create Account
         </button>
+
+        <p style={s.switch}>
+          {role === "editor" ? "Client?" : "Editor?"}{" "}
+          <span
+            style={s.link}
+            onClick={() =>
+              router.push(role === "editor" ? "/login" : "/login?type=editor")
+            }
+          >
+            Switch
+          </span>
+        </p>
       </div>
     </div>
   );
@@ -134,63 +163,62 @@ const s = {
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
-    background: "linear-gradient(135deg,#020617,#0f172a,#1e1b4b)",
+    background: "radial-gradient(circle,#020617,#0f172a,#4c1d95)",
+    color: "white"
   },
-  card: {
-    background: "#1e293b",
-    padding: 36,
-    borderRadius: 16,
-    width: "90%",
-    maxWidth: 360,
-    color: "white",
+
+  loader: {
+    height: "100vh",
     display: "flex",
-    flexDirection: "column",
-    gap: 12,
+    justifyContent: "center",
+    alignItems: "center",
+    color: "white"
   },
-  icon: { fontSize: 36, textAlign: "center" },
-  title: { textAlign: "center", fontWeight: 800, fontSize: 20, margin: 0 },
-  error: {
-    background: "#7f1d1d",
-    color: "#fca5a5",
-    padding: "10px 14px",
-    borderRadius: 8,
-    fontSize: 13,
+
+  card: {
+    width: 350,
+    padding: 30,
+    borderRadius: 20,
+    background: "rgba(30,27,75,0.6)",
+    backdropFilter: "blur(20px)",
+    border: "1px solid rgba(255,255,255,0.1)"
   },
+
+  title: { marginBottom: 15 },
+
   input: {
+    width: "100%",
     padding: 12,
+    marginTop: 10,
     borderRadius: 10,
-    border: "1px solid #334155",
-    background: "#0f172a",
-    color: "white",
-    outline: "none",
-    fontSize: 14,
+    border: "none"
   },
-  btnPrimary: {
+
+  btn: {
+    width: "100%",
     padding: 12,
-    background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
+    marginTop: 15,
+    background: "#6366f1",
     color: "white",
-    border: "none",
-    borderRadius: 10,
-    fontWeight: 600,
-    cursor: "pointer",
-    fontSize: 14,
+    border: "none"
   },
-  btnSecondary: {
+
+  signup: {
+    width: "100%",
     padding: 12,
-    background: "#334155",
+    marginTop: 10,
+    background: "#22c55e",
     color: "white",
-    border: "none",
-    borderRadius: 10,
-    fontWeight: 600,
-    cursor: "pointer",
-    fontSize: 14,
+    border: "none"
   },
-  backLink: {
-    background: "none",
-    border: "none",
-    color: "#94a3b8",
-    cursor: "pointer",
-    textAlign: "center",
-    fontSize: 13,
+
+  switch: {
+    marginTop: 10,
+    fontSize: 12
   },
+
+  link: {
+    color: "#a78bfa",
+    cursor: "pointer"
+  }
 };
