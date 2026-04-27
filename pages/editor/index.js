@@ -18,30 +18,20 @@ export default function Editor() {
       }
 
       try {
-        // ✅ DIRECT FETCH USING UID (CORRECT WAY)
-        const ref = doc(db, "editors", u.uid);
-        const snap = await getDoc(ref);
+        // ✅ FAST + CORRECT
+        const snap = await getDoc(doc(db, "editors", u.uid));
 
         if (!snap.exists()) {
-          console.log("❌ Editor doc not found");
+          alert("Editor profile not found");
           router.replace("/login?type=editor");
           return;
         }
 
-        const data = snap.data();
-
-        // ✅ approval check
-        if (!data.approved) {
-          alert("⏳ Waiting for admin approval");
-          router.replace("/");
-          return;
-        }
-
-        setEditor(data);
+        setEditor(snap.data());
         setLoading(false);
 
       } catch (err) {
-        console.error(err);
+        console.log(err);
         router.replace("/");
       }
     });
@@ -54,7 +44,6 @@ export default function Editor() {
     router.replace("/");
   };
 
-  // 🔄 LOADING SCREEN
   if (loading) {
     return (
       <div style={s.center}>
@@ -65,108 +54,68 @@ export default function Editor() {
 
   return (
     <div style={s.page}>
-      {/* HEADER */}
-      <div style={s.header}>
-        <h1 style={s.title}>🎬 Editor Dashboard</h1>
-        <button onClick={logout} style={s.logout}>Logout</button>
-      </div>
+      <h1>🎬 Editor Dashboard</h1>
 
-      {/* PROFILE CARD */}
       <div style={s.card}>
         <h2>{editor.name}</h2>
         <p>{editor.email}</p>
-        <p>Skills: {editor.skills?.join(", ") || "Not set"}</p>
-        <p>Price: ₹{editor.price}</p>
-        <p>Status: {editor.active ? "🟢 Online" : "🔴 Offline"}</p>
+        <p>{editor.skills?.join(", ")}</p>
+        <p>₹{editor.price}</p>
       </div>
 
-      {/* ACTIONS */}
-      <div style={s.grid}>
-        <button
-          style={btn("#7c3aed")}
-          onClick={() => router.push("/editor/inbox")}
-        >
-          📩 Inbox
-        </button>
+      <button
+        style={s.btn}
+        onClick={() => router.push(`/chat/admin_${auth.currentUser.uid}`)}
+      >
+        💬 Chat Admin
+      </button>
 
-        <button
-          style={btn("#06b6d4")}
-          onClick={() => router.push(`/chat/admin_${auth.currentUser.uid}`)}
-        >
-          💬 Chat Admin
-        </button>
-      </div>
+      <button style={s.logout} onClick={logout}>
+        Logout
+      </button>
     </div>
   );
 }
 
-// 🎨 UI
 const s = {
   page: {
     minHeight: "100vh",
     padding: 20,
-    background: "linear-gradient(135deg,#020617,#0f172a,#1e1b4b)",
+    background: "#020617",
     color: "white",
   },
-
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center"
+  card: {
+    padding: 20,
+    background: "#111827",
+    marginTop: 20,
+    borderRadius: 12,
   },
-
-  title: {
-    fontSize: 22,
-    fontWeight: 800
+  btn: {
+    marginTop: 20,
+    padding: 12,
+    background: "#7c3aed",
+    border: "none",
+    color: "white",
   },
-
   logout: {
-    padding: "8px 14px",
+    marginTop: 10,
+    padding: 12,
     background: "#ef4444",
     border: "none",
-    borderRadius: 8,
-    color: "white"
+    color: "white",
   },
-
-  card: {
-    marginTop: 20,
-    padding: 20,
-    borderRadius: 16,
-    background: "rgba(255,255,255,0.05)",
-    backdropFilter: "blur(10px)"
-  },
-
-  grid: {
-    marginTop: 25,
-    display: "grid",
-    gap: 12
-  },
-
   center: {
     height: "100vh",
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
   },
-
   loader: {
-    width: 30,
-    height: 30,
-    border: "3px solid rgba(255,255,255,0.1)",
-    borderTop: "3px solid #7c3aed",
+    width: 40,
+    height: 40,
+    border: "4px solid #333",
+    borderTop: "4px solid #8b5cf6",
     borderRadius: "50%",
     animation: "spin 1s linear infinite",
   },
 };
-
-function btn(bg) {
-  return {
-    padding: 14,
-    border: "none",
-    borderRadius: 12,
-    background: bg,
-    color: "white",
-    fontWeight: "bold",
-    cursor: "pointer"
-  };
-}
