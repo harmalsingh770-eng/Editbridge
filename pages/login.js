@@ -6,7 +6,6 @@ import {
 } from "firebase/auth";
 import { auth, db } from "../lib/firebase";
 import { doc, setDoc, getDoc } from "firebase/firestore";
-import HomeButton from "../components/HomeButton";
 
 export default function Login() {
   const router = useRouter();
@@ -14,209 +13,67 @@ export default function Login() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
 
-  // 🔥 safer role detection
   const role = type === "editor" ? "editor" : "client";
 
-  // ================= LOGIN =================
+  // ✅ LOGIN
   const login = async () => {
-    if (!email || !password) return alert("Enter all fields");
+    const userCred = await signInWithEmailAndPassword(auth, email, password);
+    const uid = userCred.user.uid;
 
-    setLoading(true);
+    const userSnap = await getDoc(doc(db, "users", uid));
 
-    try {
-      const res = await signInWithEmailAndPassword(auth, email, password);
-      const uid = res.user.uid;
-
-      // 🔥 check EDITOR first
-      const editorSnap = await getDoc(doc(db, "editors", uid));
-
-      if (editorSnap.exists()) {
-        const data = editorSnap.data();
-
-        if (!data.approved) {
-          alert("⏳ Waiting for admin approval");
-          setLoading(false);
-          return;
-        }
-
-        router.replace("/editor");
-        return;
-      }
-
-      // 🔥 else check CLIENT
-      const userSnap = await getDoc(doc(db, "users", uid));
-
-      if (userSnap.exists()) {
-        router.replace("/client");
-        return;
-      }
-
-      // ❌ no role found
-      alert("Account not found properly");
-    } catch (err) {
-      alert(err.message);
+    if (!userSnap.exists()) {
+      alert("User data missing");
+      return;
     }
 
-    setLoading(false);
+    const userRole = userSnap.data().role;
+
+    if (userRole === "editor") {
+      router.push("/editor");
+    } else {
+      router.push("/client");
+    }
   };
 
-  // ================= SIGNUP =================
+  // ✅ SIGNUP
   const signup = async () => {
-    if (!email || !password) return alert("Enter all fields");
+    const userCred = await createUserWithEmailAndPassword(auth, email, password);
+    const uid = userCred.user.uid;
 
-    setLoading(true);
+    // 🔥 USERS COLLECTION (IMPORTANT)
+    await setDoc(doc(db, "users", uid), {
+      email,
+      role
+    });
 
-    try {
-      const res = await createUserWithEmailAndPassword(auth, email, password);
-      const uid = res.user.uid;
+    // 🔥 IF EDITOR → ALSO CREATE EDITOR PROFILE
+    if (role === "editor") {
+      await setDoc(doc(db, "editors", uid), {
+        email,
+        name: "New Editor",
+        skills: [],
+        price: 0,
+        approved: false
+      });
 
-      if (role === "editor") {
-        // 🔥 CREATE EDITOR PROFILE (IMPORTANT)
-        await setDoc(doc(db, "editors", uid), {
-          email,
-          name: "New Editor",
-          skills: [],
-          portfolio: [],
-          price: 0,
-          approved: false,
-          active: false,
-          createdAt: new Date()
-        });
-
-        alert("✅ Editor account created. Wait for admin approval.");
-      } else {
-        await setDoc(doc(db, "users", uid), {
-          email,
-          role: "client",
-          createdAt: new Date()
-        });
-
-        router.replace("/client");
-      }
-    } catch (err) {
-      alert(err.message);
+      alert("Wait for admin approval");
+      return;
     }
 
-    setLoading(false);
+    router.push("/client");
   };
 
   return (
-    <div style={s.page}>
-      <HomeButton />
+    <div style={{padding:40}}>
+      <h1>{role.toUpperCase()} LOGIN</h1>
 
-      <div style={s.card}>
-        <h1 style={s.title}>
-          {role === "editor" ? "🎬 Editor Login" : "🚀 Client Login"}
-        </h1>
+      <input placeholder="Email" onChange={e=>setEmail(e.target.value)} />
+      <input type="password" placeholder="Password" onChange={e=>setPassword(e.target.value)} />
 
-        <input
-          placeholder="Email"
-          onChange={(e) => setEmail(e.target.value)}
-          style={s.input}
-        />
-
-        <input
-          type="password"
-          placeholder="Password"
-          onChange={(e) => setPassword(e.target.value)}
-          style={s.input}
-        />
-
-        <button onClick={login} style={s.btn} disabled={loading}>
-          {loading ? "Loading..." : "Login"}
-        </button>
-
-        <button onClick={signup} style={s.signup} disabled={loading}>
-          Create Account
-        </button>
-
-        <p style={s.switch}>
-          {role === "editor" ? "Client?" : "Editor?"}{" "}
-          <span
-            style={s.link}
-            onClick={() =>
-              router.push(role === "editor" ? "/login" : "/login?type=editor")
-            }
-          >
-            Switch
-          </span>
-        </p>
-      </div>
+      <button onClick={login}>Login</button>
+      <button onClick={signup}>Signup</button>
     </div>
   );
 }
-
-// ================= UI =================
-const s = {
-  page: {
-    minHeight: "100vh",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    background: "radial-gradient(circle at top,#020617,#0f172a,#4c1d95)",
-    color: "white"
-  },
-
-  card: {
-    width: 350,
-    padding: 30,
-    borderRadius: 20,
-    background: "rgba(30,27,75,0.6)",
-    backdropFilter: "blur(20px)",
-    border: "1px solid rgba(255,255,255,0.1)",
-    boxShadow: "0 0 40px rgba(124,58,237,0.2)"
-  },
-
-  title: {
-    marginBottom: 15,
-    fontSize: 22,
-    fontWeight: 800
-  },
-
-  input: {
-    width: "100%",
-    padding: 12,
-    marginTop: 10,
-    borderRadius: 10,
-    border: "none",
-    outline: "none",
-    background: "rgba(255,255,255,0.08)",
-    color: "white"
-  },
-
-  btn: {
-    width: "100%",
-    padding: 12,
-    marginTop: 15,
-    borderRadius: 10,
-    border: "none",
-    background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
-    color: "white",
-    fontWeight: 700
-  },
-
-  signup: {
-    width: "100%",
-    padding: 12,
-    marginTop: 10,
-    borderRadius: 10,
-    border: "none",
-    background: "#22c55e",
-    color: "white",
-    fontWeight: 700
-  },
-
-  switch: {
-    marginTop: 15,
-    fontSize: 12,
-    color: "#94a3b8"
-  },
-
-  link: {
-    color: "#a78bfa",
-    cursor: "pointer",
-    fontWeight: 700
-  }
-};
