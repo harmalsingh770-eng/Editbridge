@@ -4,57 +4,65 @@ import {
   collection,
   query,
   where,
-  getDocs
+  onSnapshot,
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { useRouter } from "next/router";
 
-export default function Chat() {
-  const [allowed, setAllowed] = useState(false);
-  const [loading, setLoading] = useState(true);
+export default function Inbox() {
+  const [chats, setChats] = useState([]);
+  const [user, setUser] = useState(null);
   const router = useRouter();
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (user) => {
-      if (!user) {
-        router.push("/login");
-        return;
-      }
+    const unsub = onAuthStateChanged(auth, (u) => {
+      if (!u) return router.push("/login");
+      setUser(u);
 
-      // 🔍 check payment
       const q = query(
-        collection(db, "payments"),
-        where("userId", "==", user.uid)
+        collection(db, "chats"),
+        where("participants", "array-contains", u.uid)
       );
 
-      const snap = await getDocs(q);
+      onSnapshot(q, (snap) => {
+        const data = snap.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        }));
 
-      let ok = false;
+        // SORT BY LAST MESSAGE
+        data.sort((a, b) => b.lastMessageAt?.seconds - a.lastMessageAt?.seconds);
 
-      snap.forEach((doc) => {
-        if (doc.data().status === "approved") {
-          ok = true;
-        }
+        setChats(data);
       });
-
-      if (!ok) {
-        router.push("/payment");
-      } else {
-        setAllowed(true);
-      }
-
-      setLoading(false);
     });
 
     return () => unsub();
   }, []);
 
-  if (loading) return <p>Checking access...</p>;
-  if (!allowed) return null;
-
   return (
-    <div style={{ padding: 20 }}>
-      <h1>Chat Unlocked ✅</h1>
+    <div style={{ padding: 20, color: "white" }}>
+      <h2>Inbox</h2>
+
+      {chats.map((c) => (
+        <div
+          key={c.id}
+          onClick={() => router.push(`/chat/${c.id}`)}
+          style={{
+            padding: 12,
+            borderBottom: "1px solid #222",
+            cursor: "pointer",
+          }}
+        >
+          <div style={{ fontWeight: "bold" }}>
+            {c.lastSender || "Unknown"}
+          </div>
+
+          <div style={{ fontSize: 13, opacity: 0.7 }}>
+            {c.lastMessage}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
