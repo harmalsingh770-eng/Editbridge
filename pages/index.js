@@ -5,22 +5,18 @@ import { onAuthStateChanged } from "firebase/auth";
 
 export default function Home() {
   const router = useRouter();
-  const [checking, setChecking] = useState(true);
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => {
-      setTimeout(() => {
-        if (user) {
-          router.replace("/client");
-        } else {
-          setChecking(false);
-        }
-      }, 900);
+    const unsub = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      setLoading(false);
     });
     return () => unsub();
   }, []);
 
-  if (checking) {
+  if (loading) {
     return (
       <div style={s.loaderPage}>
         <div style={s.loader}></div>
@@ -41,13 +37,24 @@ export default function Home() {
         {/* NAV */}
         <div style={s.nav}>
           <div style={s.logo}>🎬 EditBridge</div>
+
           <div style={s.navBtns}>
-            <button onClick={() => router.push("/login")} style={s.loginBtn}>
-              Login
-            </button>
-            <button onClick={() => router.push("/login")} style={s.ctaBtn}>
-              Get Started
-            </button>
+            {!user ? (
+              <>
+                <button onClick={() => router.push("/login")} style={s.loginBtn}>
+                  Login
+                </button>
+                <button onClick={() => router.push("/login")} style={s.ctaBtn}>
+                  Get Started
+                </button>
+              </>
+            ) : (
+              <>
+                <button onClick={() => router.push("/client")} style={s.ctaBtn}>
+                  Go to Dashboard
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -58,13 +65,19 @@ export default function Home() {
           </h1>
 
           <p className="fadeUp delay1" style={s.subtitle}>
-            Hire elite video editors, chat instantly, and scale your content like a pro.
+            Hire elite video editors, chat instantly, and scale your content.
           </p>
 
           <div className="fadeUp delay2" style={s.heroBtns}>
-            <button onClick={() => router.push("/login")} style={s.mainBtn}>
-              🚀 Get Started
+            <button
+              onClick={() =>
+                router.push(user ? "/client" : "/login")
+              }
+              style={s.mainBtn}
+            >
+              🚀 {user ? "Open Dashboard" : "Get Started"}
             </button>
+
             <button style={s.secondaryBtn}>▶ Demo</button>
           </div>
         </div>
@@ -72,13 +85,13 @@ export default function Home() {
         {/* FEATURES */}
         <div style={s.features}>
           <Feature icon="⚡" title="Instant Chat" desc="Real-time messaging system" />
-          <Feature icon="💎" title="Top Talent" desc="Verified skilled editors" />
+          <Feature icon="💎" title="Top Talent" desc="Verified editors" />
           <Feature icon="🔒" title="Secure Access" desc="One-time unlock model" />
         </div>
 
         {/* FOOTER */}
         <div style={s.footer}>
-          © {new Date().getFullYear()} EditBridge • Premium Editing Marketplace
+          © {new Date().getFullYear()} EditBridge
         </div>
       </div>
     </>
@@ -100,7 +113,6 @@ const css = `
 
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* FADE UP */
   .fadeUp {
     opacity: 0;
     transform: translateY(20px);
@@ -111,20 +123,15 @@ const css = `
   .delay2 { animation-delay: 0.4s; }
 
   @keyframes fadeUp {
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
+    to { opacity: 1; transform: translateY(0); }
   }
 
-  /* FLOATING ORBS */
   @keyframes float {
     0% { transform: translateY(0px); }
     50% { transform: translateY(-20px); }
     100% { transform: translateY(0px); }
   }
 
-  /* CARD HOVER */
   .card {
     width: 220px;
     padding: 20px;
@@ -158,6 +165,7 @@ const s = {
     alignItems: "center",
     background: "#020617",
   },
+
   loader: {
     width: 40,
     height: 40,
@@ -202,9 +210,11 @@ const s = {
     justifyContent: "space-between",
     padding: "20px 40px",
   },
+
   logo: { fontWeight: 800, fontSize: 18 },
 
   navBtns: { display: "flex", gap: 10 },
+
   loginBtn: {
     background: "transparent",
     border: "1px solid rgba(255,255,255,0.1)",
@@ -212,6 +222,7 @@ const s = {
     padding: "8px 16px",
     borderRadius: 10,
   },
+
   ctaBtn: {
     background: "linear-gradient(135deg,#7c3aed,#4f46e5)",
     border: "none",
@@ -230,7 +241,6 @@ const s = {
   title: {
     fontSize: 44,
     fontWeight: 800,
-    letterSpacing: "-1px",
   },
 
   gradient: {
