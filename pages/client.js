@@ -8,45 +8,32 @@ import {
   query,
   where
 } from "firebase/firestore";
-import { onAuthStateChanged, signOut } from "firebase/auth";
+import { signOut } from "firebase/auth";
 import { useRouter } from "next/router";
 import Reviews from "../components/Reviews";
 
 export default function Client() {
   const [editors, setEditors] = useState([]);
-  const [user, setUser] = useState(null);
-  const [approvedEditors, setApprovedEditors] = useState([]);
+  const [paidChats, setPaidChats] = useState([]);
   const router = useRouter();
 
-  // 🔐 AUTH CHECK
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
-      if (!u) {
-        router.push("/login");
-      } else {
-        setUser(u);
-      }
-    });
-
-    return () => unsub();
-  }, []);
-
-  // 📦 FETCH EDITORS
+  // 🔥 Fetch editors
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "editors"), (snap) => {
-      const data = snap.docs.map((doc) => ({
+      const data = snap.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }));
 
-      setEditors(data.filter((e) => e.approved));
+      setEditors(data.filter(e => e.approved && e.active));
     });
 
     return () => unsub();
   }, []);
 
-  // ✅ CHECK APPROVED PAYMENTS
+  // 🔥 Paid chats (deal system)
   useEffect(() => {
+    const user = auth.currentUser;
     if (!user) return;
 
     const q = query(
@@ -56,47 +43,38 @@ export default function Client() {
     );
 
     const unsub = onSnapshot(q, (snap) => {
-      const list = snap.docs.map((doc) => doc.data().editorId);
-      setApprovedEditors(list);
+      const chats = snap.docs.map(doc => doc.data().chatId);
+      setPaidChats(chats);
     });
 
     return () => unsub();
-  }, [user]);
+  }, []);
 
-  // 💸 GO TO PAY PAGE
-  const goToPay = (editorId) => {
-    router.push(`/pay/${editorId}`);
-  };
-
-  // 💬 OPEN CHAT (FIXED WITH chatId)
-  const openChat = (editorId) => {
-    const currentUser = auth.currentUser;
-    if (!currentUser) return;
-
-    const chatId = [currentUser.uid, editorId].sort().join("_");
-
-    router.push(`/chat/${chatId}`);
-  };
-
-  // 🚪 LOGOUT
-  const handleLogout = async () => {
+  const logout = async () => {
     await signOut(auth);
     router.push("/");
   };
 
+  const handleChat = (editorId) => {
+    const user = auth.currentUser;
+    if (!user) return router.push("/login");
+
+    const chatId = [user.uid, editorId].sort().join("_");
+
+    if (paidChats.includes(chatId)) {
+      router.push(`/chat/${chatId}`);
+    } else {
+      router.push(`/pay/${editorId}`);
+    }
+  };
+
   return (
     <div style={s.page}>
+      
       {/* HEADER */}
       <div style={s.header}>
         <h1 style={s.logo}>🎬 EditBridge</h1>
-
-        <div style={{ display: "flex", gap: 10 }}>
-          <button style={s.cta}>🚀 Get Started</button>
-
-          <button style={s.logout} onClick={handleLogout}>
-            Logout
-          </button>
-        </div>
+        <button onClick={logout} style={s.logout}>Logout</button>
       </div>
 
       {/* HERO */}
@@ -104,49 +82,60 @@ export default function Client() {
         <h1 style={s.title}>
           Work with <span style={s.gradient}>Top Editors</span>
         </h1>
-
         <p style={s.subtitle}>
-          Chat instantly, hire fast, and scale your content production.
+          Hire fast. Chat instantly. Scale content.
         </p>
       </div>
 
       {/* EDITORS */}
       <div style={s.grid}>
-        {editors.map((editor) => {
-          const isUnlocked = approvedEditors.includes(editor.id);
+        {editors.map(editor => (
+          <div key={editor.id} style={s.card}>
+            
+            <h2 style={s.name}>{editor.name}</h2>
 
-          return (
-            <div key={editor.id} style={s.card}>
-              <h2>{editor.name}</h2>
+            {/* BIO */}
+            <p style={s.bio}>{editor.bio}</p>
 
-              <p style={s.skills}>
-                {editor.skills?.join(", ")}
-              </p>
-
-              <p style={s.price}>₹{editor.price}</p>
-
-              {/* 🔥 PAY / CHAT */}
-              {!isUnlocked ? (
-                <button
-                  style={s.payBtn}
-                  onClick={() => goToPay(editor.id)}
-                >
-                  💸 Pay ₹10 to Unlock Chat
-                </button>
-              ) : (
-                <button
-                  style={s.chatBtn}
-                  onClick={() => openChat(editor.id)}
-                >
-                  💬 Chat with Editor
-                </button>
-              )}
-
-              {/* ⭐ REVIEWS */}
-              <Reviews editorId={editor.id} />
+            {/* SKILLS */}
+            <div style={s.skillsWrap}>
+              {editor.skills?.map((skill, i) => (
+                <span key={i} style={s.skill}>{skill}</span>
+              ))}
             </div>
-          );
-        })}
+
+            {/* PRICE */}
+            <div style={s.price}>₹{editor.price}</div>
+
+            {/* PORTFOLIO */}
+            {editor.portfolio?.length > 0 && (
+              <div style={s.portfolioWrap}>
+                {editor.portfolio.map((link, i) => (
+                  <a
+                    key={i}
+                    href={link}
+                    target="_blank"
+                    style={s.portfolio}
+                  >
+                    🔗 View Work {i + 1}
+                  </a>
+                ))}
+              </div>
+            )}
+
+            {/* CHAT BUTTON */}
+            <button
+              onClick={() => handleChat(editor.id)}
+              style={s.chatBtn}
+            >
+              💬 Chat with Editor
+            </button>
+
+            {/* REVIEWS */}
+            <Reviews editorId={editor.id} />
+
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -156,8 +145,9 @@ const s = {
   page: {
     minHeight: "100vh",
     padding: 20,
-    background: "radial-gradient(circle,#020617,#0f172a,#4c1d95)",
-    color: "white"
+    background: "radial-gradient(circle at top,#0f172a,#020617)",
+    color: "white",
+    fontFamily: "sans-serif"
   },
 
   header: {
@@ -168,34 +158,26 @@ const s = {
 
   logo: {
     fontSize: 22,
-    fontWeight: "bold"
-  },
-
-  cta: {
-    padding: "10px 16px",
-    borderRadius: 10,
-    background: "#6366f1",
-    border: "none",
-    color: "white"
+    fontWeight: 800
   },
 
   logout: {
-    padding: "10px 16px",
-    borderRadius: 10,
     background: "#ef4444",
     border: "none",
+    padding: "8px 14px",
+    borderRadius: 10,
     color: "white",
     cursor: "pointer"
   },
 
   hero: {
     textAlign: "center",
-    marginTop: 60
+    marginTop: 50
   },
 
   title: {
-    fontSize: 32,
-    fontWeight: "bold"
+    fontSize: 34,
+    fontWeight: 800
   },
 
   gradient: {
@@ -206,53 +188,78 @@ const s = {
 
   subtitle: {
     marginTop: 10,
-    opacity: 0.7
+    color: "#94a3b8"
   },
 
   grid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit,minmax(250px,1fr))",
+    gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))",
     gap: 20,
     marginTop: 40
   },
 
   card: {
     padding: 20,
-    borderRadius: 16,
-    background: "rgba(30,27,75,0.6)",
-    backdropFilter: "blur(20px)",
-    border: "1px solid rgba(255,255,255,0.1)"
+    borderRadius: 18,
+    background: "rgba(30,41,59,0.7)",
+    backdropFilter: "blur(12px)",
+    border: "1px solid rgba(255,255,255,0.08)",
+    transition: "0.3s"
   },
 
-  skills: {
+  name: {
+    fontSize: 20,
+    fontWeight: 700
+  },
+
+  bio: {
+    marginTop: 8,
     fontSize: 13,
-    opacity: 0.7
+    color: "#cbd5f5"
+  },
+
+  skillsWrap: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 10
+  },
+
+  skill: {
+    background: "#334155",
+    padding: "4px 8px",
+    borderRadius: 6,
+    fontSize: 11
   },
 
   price: {
-    marginTop: 8,
-    fontWeight: "bold"
+    marginTop: 12,
+    fontWeight: 700,
+    color: "#22c55e"
   },
 
-  payBtn: {
+  portfolioWrap: {
     marginTop: 10,
-    padding: 10,
-    width: "100%",
-    background: "#f59e0b",
-    border: "none",
-    borderRadius: 10,
-    color: "white",
-    cursor: "pointer"
+    display: "flex",
+    flexDirection: "column",
+    gap: 4
+  },
+
+  portfolio: {
+    fontSize: 12,
+    color: "#60a5fa",
+    textDecoration: "none"
   },
 
   chatBtn: {
-    marginTop: 10,
-    padding: 10,
+    marginTop: 14,
     width: "100%",
-    background: "#22c55e",
-    border: "none",
+    padding: 12,
     borderRadius: 10,
+    background: "linear-gradient(135deg,#22c55e,#16a34a)",
+    border: "none",
     color: "white",
+    fontWeight: 600,
     cursor: "pointer"
   }
 };
