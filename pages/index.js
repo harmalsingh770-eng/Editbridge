@@ -20,7 +20,7 @@ export default function Home() {
           if (snap.exists()) {
             const role = snap.data().role;
 
-            // ðŸ”¥ AUTO REDIRECT BASED ON ROLE
+            // ✅ Auto redirect
             if (role === "editor") {
               router.replace("/editor");
               return;
@@ -40,7 +40,7 @@ export default function Home() {
     return () => unsub();
   }, []);
 
-  // ðŸ”„ LOADING SCREEN
+  // 🔄 Loading screen
   if (loading) {
     return (
       <div style={s.loader}>
@@ -49,7 +49,7 @@ export default function Home() {
     );
   }
 
-  // ðŸŽ¯ DASHBOARD BUTTON LOGIC
+  // 🎯 Dashboard logic
   const goDashboard = async () => {
     if (!user) return router.push("/login");
 
@@ -63,7 +63,7 @@ export default function Home() {
     <div style={s.page}>
       {/* NAV */}
       <div style={s.nav}>
-        <div style={s.logo}>ðŸŽ¬ EditBridge</div>
+        <div style={s.logo}>🎬 EditBridge</div>
 
         {!user ? (
           <div style={s.navBtns}>
@@ -106,7 +106,7 @@ export default function Home() {
         </p>
 
         <button onClick={goDashboard} style={s.cta}>
-          ðŸš€ Get Started
+          🚀 Get Started
         </button>
       </div>
     </div>
