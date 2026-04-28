@@ -6,28 +6,10 @@ import {
   collection,
   query,
   where,
-  onSnapshot,
-  orderBy
+  orderBy,
+  limit,
+  onSnapshot
 } from "firebase/firestore";
-
-// ⭐ Star UI
-function Stars({ value = 0 }) {
-  return (
-    <div style={{ display: "flex", gap: 2 }}>
-      {[1, 2, 3, 4, 5].map((i) => (
-        <span
-          key={i}
-          style={{
-            color: i <= value ? "#facc15" : "#334155",
-            fontSize: 14
-          }}
-        >
-          ★
-        </span>
-      ))}
-    </div>
-  );
-}
 
 export default function Reviews({ editorId }) {
   const [reviews, setReviews] = useState([]);
@@ -38,63 +20,37 @@ export default function Reviews({ editorId }) {
     const q = query(
       collection(db, "reviews"),
       where("editorId", "==", editorId),
-      orderBy("createdAt", "desc")
+      orderBy("createdAt", "desc"),
+      limit(2) // 🔥 ONLY TOP 2
     );
 
     const unsub = onSnapshot(q, (snap) => {
-      const top2 = snap.docs.slice(0, 2).map((doc) => doc.data());
-      setReviews(top2);
+      setReviews(snap.docs.map(doc => doc.data()));
     });
 
     return () => unsub();
   }, [editorId]);
 
-  return (
-    <div style={s.wrap}>
-      {reviews.length === 0 && (
-        <p style={s.empty}>No reviews yet</p>
-      )}
+  if (reviews.length === 0) {
+    return <p style={{ fontSize: 12, opacity: 0.6 }}>No reviews yet</p>;
+  }
 
+  return (
+    <div style={{ marginTop: 10 }}>
       {reviews.map((r, i) => (
-        <div key={i} style={s.card}>
-          <div style={s.top}>
-            <Stars value={r.rating} />
-            <span style={s.email}>{r.clientEmail}</span>
+        <div key={i} style={{ marginBottom: 8 }}>
+          
+          {/* ⭐ Stars */}
+          <div style={{ color: "#facc15" }}>
+            {"★".repeat(r.rating)}{"☆".repeat(5 - r.rating)}
           </div>
 
-          <p style={s.msg}>{r.message}</p>
+          <p style={{ fontSize: 12, opacity: 0.8 }}>
+            {r.message}
+          </p>
+
         </div>
       ))}
     </div>
   );
 }
-
-const s = {
-  wrap: { marginTop: 10 },
-
-  empty: { fontSize: 12, opacity: 0.6 },
-
-  card: {
-    background: "rgba(15,23,42,0.8)",
-    padding: 10,
-    borderRadius: 10,
-    marginTop: 8,
-    border: "1px solid rgba(255,255,255,0.08)"
-  },
-
-  top: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 4
-  },
-
-  email: {
-    fontSize: 11,
-    opacity: 0.6
-  },
-
-  msg: {
-    fontSize: 13
-  }
-};
