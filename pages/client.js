@@ -63,14 +63,19 @@ export default function Client() {
     return () => unsub();
   }, [user]);
 
-  // 💸 GO TO PAY PAGE (/pay/[editorId])
+  // 💸 GO TO PAY PAGE
   const goToPay = (editorId) => {
     router.push(`/pay/${editorId}`);
   };
 
-  // 💬 OPEN CHAT
+  // 💬 OPEN CHAT (FIXED WITH chatId)
   const openChat = (editorId) => {
-    router.push(`/chat?editorId=${editorId}`);
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+
+    const chatId = [currentUser.uid, editorId].sort().join("_");
+
+    router.push(`/chat/${chatId}`);
   };
 
   // 🚪 LOGOUT
