@@ -29,13 +29,17 @@ export default function Client() {
       if (!u) return router.replace("/login");
       setUser(u);
 
-      // 🔥 Load editors
-      unsubEditors = onSnapshot(collection(db, "editors"), (snap) => {
+      // 🔥 ONLY ACTIVE EDITORS
+      const qEditors = query(
+        collection(db, "editors"),
+        where("active", "==", true)
+      );
+
+      unsubEditors = onSnapshot(qEditors, (snap) => {
         setEditors(snap.docs.map(d => ({ id: d.id, ...d.data() })));
         setLoading(false);
       });
 
-      // 🔥 Load payment status
       const q = query(
         collection(db, "clientAccess"),
         where("uid", "==", u.uid)
@@ -46,7 +50,7 @@ export default function Client() {
         snap.docs.forEach(d => {
           const data = d.data();
           if (data.editorId) {
-            map[data.editorId] = data.status; // pending / approved / rejected
+            map[data.editorId] = data.status;
           }
         });
         setAccessMap(map);
@@ -60,98 +64,66 @@ export default function Client() {
     };
   }, []);
 
-  // 🔥 HANDLE BUTTON CLICK
   const handleAction = async (editorId) => {
-    if (!user) return;
-
     const status = accessMap[editorId];
 
-    // 💰 NOT PAID
-    if (!status) {
-      return router.push(`/pay/${editorId}`);
-    }
+    if (!status) return router.push(`/pay/${editorId}`);
+    if (status === "pending") return alert("⏳ Pending");
+    if (status === "rejected") return alert("❌ Rejected");
 
-    // ⏳ PENDING
-    if (status === "pending") {
-      return alert("⏳ Waiting for admin approval...");
-    }
-
-    // ❌ REJECTED
-    if (status === "rejected") {
-      return alert("❌ Payment rejected. Contact support.");
-    }
-
-    // ✅ APPROVED → OPEN CHAT
     const chatId = [user.uid, editorId].sort().join("_");
 
-    await setDoc(
-      doc(db, "chats", chatId),
-      {
-        users: [user.uid, editorId],
-        createdAt: serverTimestamp(),
-        lastMessage: "",
-        lastUpdated: serverTimestamp()
-      },
-      { merge: true }
-    );
+    await setDoc(doc(db, "chats", chatId), {
+      users: [user.uid, editorId],
+      createdAt: serverTimestamp()
+    }, { merge: true });
 
     router.push(`/chat/${chatId}`);
   };
 
-  if (loading || !user) {
-    return (
-      <div style={s.loader}>
-        <div style={s.spinner}></div>
-      </div>
-    );
-  }
+  if (loading) return <div>Loading...</div>;
 
   return (
     <div style={s.page}>
-      {/* HEADER */}
       <div style={s.header}>
-        <h1 style={s.title}>🔥 Find Your Editor</h1>
-        <button onClick={() => signOut(auth)} style={s.logout}>
-          Logout
-        </button>
+        <h1>🔥 Find Editor</h1>
+        <button onClick={() => signOut(auth)} style={s.logout}>Logout</button>
       </div>
 
-      {/* EDITOR LIST */}
       {editors.map((e) => {
         const status = accessMap[e.id];
 
         let text = "🔒 Pay ₹10";
         let style = s.lock;
 
-        if (status === "pending") {
-          text = "⏳ Pending";
-          style = s.pending;
-        }
-
-        if (status === "approved") {
-          text = "💬 Chat";
-          style = s.chat;
-        }
-
-        if (status === "rejected") {
-          text = "❌ Rejected";
-          style = s.rejected;
-        }
+        if (status === "pending") { text = "⏳ Pending"; style = s.pending; }
+        if (status === "approved") { text = "💬 Chat"; style = s.chat; }
+        if (status === "rejected") { text = "❌ Rejected"; style = s.rejected; }
 
         return (
           <div key={e.id} style={s.card}>
-            <div>
-              <b style={{ fontSize: 16 }}>{e.name}</b>
+            <div style={{ flex: 1 }}>
+              <h3>{e.name}</h3>
+
+              <p style={s.bio}>{e.bio}</p>
+
               <div style={s.skills}>
-                {e.skills?.join(", ") || "No skills added"}
+                {e.skills?.join(", ")}
               </div>
+
+              <div style={s.price}>₹{e.price}</div>
+
+              {e.portfolio?.length > 0 && (
+                <button
+                  style={s.portfolioBtn}
+                  onClick={() => window.open(e.portfolio[0], "_blank")}
+                >
+                  🎬 View Portfolio
+                </button>
+              )}
             </div>
 
-            <button
-              onClick={() => handleAction(e.id)}
-              style={style}
-              disabled={status === "pending"}
-            >
+            <button onClick={() => handleAction(e.id)} style={style}>
               {text}
             </button>
           </div>
@@ -162,99 +134,20 @@ export default function Client() {
 }
 
 const s = {
-  page: {
-    padding: 20,
-    minHeight: "100vh",
-    background: "linear-gradient(135deg,#020617,#0f172a,#1e1b4b)",
-    color: "white"
-  },
+  page:{ padding:20, background:"#020617", minHeight:"100vh", color:"white" },
+  header:{ display:"flex", justifyContent:"space-between", marginBottom:20 },
+  logout:{ background:"#ef4444", padding:8, borderRadius:8, color:"white" },
 
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 20
-  },
+  card:{ display:"flex", justifyContent:"space-between", padding:16, marginTop:12, background:"#1e293b", borderRadius:12 },
 
-  title: {
-    fontSize: 22,
-    fontWeight: "700"
-  },
+  bio:{ fontSize:13, color:"#cbd5f5", whiteSpace:"pre-wrap" },
+  skills:{ fontSize:12, color:"#94a3b8" },
+  price:{ color:"#22c55e", marginTop:5 },
 
-  logout: {
-    background: "#ef4444",
-    border: "none",
-    padding: "8px 14px",
-    borderRadius: 10,
-    color: "white",
-    cursor: "pointer"
-  },
+  portfolioBtn:{ marginTop:8, background:"#0ea5e9", padding:6, borderRadius:8, color:"white" },
 
-  card: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 16,
-    background: "rgba(30,41,59,0.7)",
-    marginTop: 12,
-    borderRadius: 14,
-    backdropFilter: "blur(10px)"
-  },
-
-  skills: {
-    fontSize: 13,
-    color: "#94a3b8",
-    marginTop: 4
-  },
-
-  lock: {
-    background: "#7c3aed",
-    color: "white",
-    border: "none",
-    padding: "8px 14px",
-    borderRadius: 10,
-    cursor: "pointer"
-  },
-
-  pending: {
-    background: "#f59e0b",
-    color: "white",
-    border: "none",
-    padding: "8px 14px",
-    borderRadius: 10
-  },
-
-  chat: {
-    background: "#22c55e",
-    color: "white",
-    border: "none",
-    padding: "8px 14px",
-    borderRadius: 10,
-    cursor: "pointer"
-  },
-
-  rejected: {
-    background: "#ef4444",
-    color: "white",
-    border: "none",
-    padding: "8px 14px",
-    borderRadius: 10
-  },
-
-  loader: {
-    height: "100vh",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    background: "#020617"
-  },
-
-  spinner: {
-    width: 40,
-    height: 40,
-    border: "4px solid #333",
-    borderTop: "4px solid #7c3aed",
-    borderRadius: "50%",
-    animation: "spin 1s linear infinite"
-  }
+  lock:{ background:"#7c3aed", padding:8, borderRadius:8, color:"white" },
+  pending:{ background:"#f59e0b", padding:8, borderRadius:8 },
+  chat:{ background:"#22c55e", padding:8, borderRadius:8 },
+  rejected:{ background:"#ef4444", padding:8, borderRadius:8 }
 };
