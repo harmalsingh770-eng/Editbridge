@@ -10,6 +10,8 @@ export default function Editor() {
   const router = useRouter();
 
   const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
   const [profile, setProfile] = useState({
     name: "",
     bio: "",
@@ -25,8 +27,12 @@ export default function Editor() {
       setUser(u);
 
       const ref = doc(db, "editors", u.uid);
+
       const unsubDoc = onSnapshot(ref, (snap) => {
-        if (snap.exists()) setProfile(snap.data());
+        if (snap.exists()) {
+          setProfile(snap.data());
+        }
+        setLoading(false);
       });
 
       return () => unsubDoc();
@@ -36,79 +42,84 @@ export default function Editor() {
   }, []);
 
   const saveProfile = async () => {
-    await setDoc(doc(db, "editors", user.uid), {
-      ...profile,
-      skills: Array.isArray(profile.skills)
-        ? profile.skills
-        : profile.skills.split(",").map(s => s.trim()),
-      email: user.email,
-      active: true,
-      approved: true
-    }, { merge: true });
+    if (!user) return;
 
-    alert("✅ Saved");
+    await setDoc(
+      doc(db, "editors", user.uid),
+      {
+        ...profile,
+        skills:
+          typeof profile.skills === "string"
+            ? profile.skills.split(",").map((s) => s.trim())
+            : profile.skills,
+        active: true,
+        approved: true,
+        email: user.email
+      },
+      { merge: true }
+    );
+
+    alert("✅ Profile saved");
   };
 
-  const addPortfolio = () => {
-    setProfile({
-      ...profile,
-      portfolio: [...(profile.portfolio || []), { title:"", link:"" }]
-    });
-  };
+  if (loading) {
+    return <div style={s.loader}><div style={s.spinner}></div></div>;
+  }
 
   return (
     <div style={s.page}>
+      {/* HEADER */}
       <div style={s.header}>
         <h2>🎬 Editor Dashboard</h2>
 
-        <div style={{display:"flex",gap:10}}>
-          <button onClick={()=>router.push("/editor/inbox")} style={s.inbox}>
+        <div style={{ display: "flex", gap: 10 }}>
+          {/* 🔥 INBOX BUTTON (MAIN FIX) */}
+          <button onClick={() => router.push("/editor/inbox")} style={s.inbox}>
             📩 Inbox
           </button>
 
-          <button onClick={()=>signOut(auth)} style={s.logout}>
+          <button onClick={() => signOut(auth)} style={s.logout}>
             Logout
           </button>
         </div>
       </div>
 
+      {/* PROFILE */}
       <div style={s.card}>
+        <h3>Profile</h3>
+
         <input
           placeholder="Name"
           value={profile.name || ""}
-          onChange={(e)=>setProfile({...profile,name:e.target.value})}
+          onChange={(e) => setProfile({ ...profile, name: e.target.value })}
           style={s.input}
         />
 
         <textarea
           placeholder="Bio"
           value={profile.bio || ""}
-          onChange={(e)=>setProfile({...profile,bio:e.target.value})}
+          onChange={(e) => setProfile({ ...profile, bio: e.target.value })}
           style={s.input}
         />
 
         <input
           placeholder="Skills"
           value={profile.skills?.join?.(", ") || profile.skills || ""}
-          onChange={(e)=>setProfile({...profile,skills:e.target.value})}
+          onChange={(e) => setProfile({ ...profile, skills: e.target.value })}
           style={s.input}
         />
 
         <input
-          placeholder="Price"
+          placeholder="Price ₹"
           value={profile.price || ""}
-          onChange={(e)=>setProfile({...profile,price:e.target.value})}
+          onChange={(e) =>
+            setProfile({ ...profile, price: Number(e.target.value) })
+          }
           style={s.input}
         />
       </div>
 
-      <div style={s.card}>
-        <div style={{display:"flex",justifyContent:"space-between"}}>
-          <h3>Portfolio</h3>
-          <button onClick={addPortfolio}>+ Add</button>
-        </div>
-      </div>
-
+      {/* SAVE BUTTON */}
       <button onClick={saveProfile} style={s.save}>
         Save Profile
       </button>
@@ -117,11 +128,76 @@ export default function Editor() {
 }
 
 const s = {
-  page:{padding:20,color:"white",background:"linear-gradient(135deg,#020617,#0f172a,#1e1b4b)",minHeight:"100vh"},
-  header:{display:"flex",justifyContent:"space-between",marginBottom:20},
-  logout:{background:"#ef4444",padding:"8px 14px",border:"none",borderRadius:8,color:"white"},
-  inbox:{background:"#7c3aed",padding:"8px 14px",border:"none",borderRadius:8,color:"white"},
-  card:{background:"#1e293b",padding:15,borderRadius:12,marginBottom:15},
-  input:{width:"100%",padding:10,marginTop:8,borderRadius:8,border:"none"},
-  save:{width:"100%",padding:12,background:"#7c3aed",border:"none",borderRadius:10,color:"white"}
+  page: {
+    minHeight: "100vh",
+    padding: 20,
+    background: "linear-gradient(135deg,#020617,#0f172a,#1e1b4b)",
+    color: "white"
+  },
+
+  header: {
+    display: "flex",
+    justifyContent: "space-between",
+    marginBottom: 20
+  },
+
+  logout: {
+    background: "#ef4444",
+    border: "none",
+    padding: "8px 14px",
+    borderRadius: 8,
+    color: "white"
+  },
+
+  inbox: {
+    background: "#7c3aed",
+    border: "none",
+    padding: "8px 14px",
+    borderRadius: 8,
+    color: "white"
+  },
+
+  card: {
+    background: "rgba(30,41,59,0.6)",
+    padding: 16,
+    borderRadius: 14,
+    marginBottom: 16,
+    backdropFilter: "blur(10px)"
+  },
+
+  input: {
+    width: "100%",
+    padding: 10,
+    marginTop: 8,
+    borderRadius: 8,
+    border: "none",
+    background: "#0f172a",
+    color: "white"
+  },
+
+  save: {
+    width: "100%",
+    padding: 12,
+    background: "#7c3aed",
+    border: "none",
+    borderRadius: 10,
+    color: "white",
+    fontWeight: 700
+  },
+
+  loader: {
+    height: "100vh",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center"
+  },
+
+  spinner: {
+    width: 40,
+    height: 40,
+    border: "4px solid #333",
+    borderTop: "4px solid #7c3aed",
+    borderRadius: "50%",
+    animation: "spin 1s linear infinite"
+  }
 };
