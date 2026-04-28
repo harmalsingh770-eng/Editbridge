@@ -61,24 +61,9 @@ export default function Chat() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // ONLINE STATUS
-  useEffect(() => {
-    if (!user || !chatId) return;
-
-    const chatRef = doc(db, "chats", chatId);
-
-    updateDoc(chatRef, {
-      clientOnline: true,
-    });
-
-    return () => {
-      updateDoc(chatRef, {
-        clientOnline: false,
-      });
-    };
-  }, [user, chatId]);
-
   const sendMessage = async () => {
+    if (!chat?.unlocked) return;
+
     if (!text.trim()) return;
 
     await addDoc(collection(db, "chats", chatId, "messages"), {
@@ -91,96 +76,87 @@ export default function Chat() {
     setText("");
   };
 
-  // TYPING
-  const handleTyping = async (val) => {
-    setText(val);
-
-    await updateDoc(doc(db, "chats", chatId), {
-      typingClient: true,
-    });
-
-    setTimeout(async () => {
-      await updateDoc(doc(db, "chats", chatId), {
-        typingClient: false,
-      });
-    }, 1000);
-  };
-
-  // SEEN
-  useEffect(() => {
-    messages.forEach(async (msg) => {
-      if (msg.sender !== user?.uid && !msg.seen) {
-        await updateDoc(
-          doc(db, "chats", chatId, "messages", msg.id),
-          { seen: true }
-        );
-      }
-    });
-  }, [messages]);
-
   return (
     <div style={styles.container}>
       {/* HEADER */}
       <div style={styles.header}>
-        <span>Chat</span>
-        <span style={{ fontSize: 12 }}>
-          {chat?.editorOnline ? "🟢 Online" : "⚫ Offline"}
-        </span>
+        <div>
+          <h3 style={{ margin: 0 }}>Editor</h3>
+          <span style={{ fontSize: 12, color: "#aaa" }}>
+            {chat?.editorOnline ? "🟢 Online" : "Last seen recently"}
+          </span>
+        </div>
       </div>
+
+      {/* LOCK BANNER */}
+      {!chat?.unlocked && (
+        <div style={styles.lockBanner}>
+          🔒 Chat Locked
+          <button
+            style={styles.unlockBtn}
+            onClick={async () => {
+              await updateDoc(doc(db, "chats", chatId), {
+                unlocked: true,
+              });
+            }}
+          >
+            Unlock ₹10 💰
+          </button>
+        </div>
+      )}
 
       {/* MESSAGES */}
       <div style={styles.messages}>
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            style={{
-              textAlign: msg.sender === user?.uid ? "right" : "left",
-              marginBottom: 10,
-            }}
-          >
+        {messages.map((msg) => {
+          const isMe = msg.sender === user?.uid;
+
+          return (
             <div
+              key={msg.id}
               style={{
-                display: "inline-block",
-                padding: 10,
-                borderRadius: 10,
-                background:
-                  msg.sender === user?.uid ? "#4caf50" : "#222",
-                color: "#fff",
-                maxWidth: "70%",
+                display: "flex",
+                justifyContent: isMe ? "flex-end" : "flex-start",
+                marginBottom: 10,
               }}
             >
-              {msg.text}
+              <div
+                style={{
+                  ...styles.bubble,
+                  background: isMe
+                    ? "linear-gradient(135deg,#4f46e5,#06b6d4)"
+                    : "#1e293b",
+                }}
+              >
+                {msg.text}
 
-              <div style={{ fontSize: 10, marginTop: 5 }}>
-                {msg.createdAt?.toDate().toLocaleTimeString()}
-              </div>
-
-              {msg.sender === user?.uid && (
-                <div style={{ fontSize: 10 }}>
-                  {msg.seen ? "✓✓ Seen" : "✓ Sent"}
+                <div style={styles.meta}>
+                  {msg.createdAt?.toDate().toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                  {isMe && (
+                    <span style={{ marginLeft: 5 }}>
+                      {msg.seen ? "✓✓" : "✓"}
+                    </span>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         <div ref={bottomRef}></div>
       </div>
 
-      {/* TYPING */}
-      {chat?.typingEditor && (
-        <div style={{ fontSize: 12 }}>Typing...</div>
-      )}
-
       {/* INPUT */}
-      <div style={styles.inputBox}>
+      <div style={styles.inputArea}>
         <input
           value={text}
-          onChange={(e) => handleTyping(e.target.value)}
+          onChange={(e) => setText(e.target.value)}
           placeholder="Type a message..."
           style={styles.input}
         />
         <button onClick={sendMessage} style={styles.send}>
-          Send
+          ➤
         </button>
       </div>
     </div>
@@ -189,40 +165,84 @@ export default function Chat() {
 
 const styles = {
   container: {
+    height: "100vh",
     display: "flex",
     flexDirection: "column",
-    height: "100vh",
-    background: "#0f172a",
+    background:
+      "linear-gradient(180deg,#0f172a,#020617)",
     color: "#fff",
   },
+
   header: {
     padding: 15,
-    background: "#111",
-    display: "flex",
-    justifyContent: "space-between",
+    background: "rgba(255,255,255,0.05)",
+    backdropFilter: "blur(10px)",
+    borderBottom: "1px solid rgba(255,255,255,0.1)",
   },
+
+  lockBanner: {
+    padding: 10,
+    textAlign: "center",
+    background:
+      "linear-gradient(90deg,#f59e0b,#ef4444)",
+    display: "flex",
+    justifyContent: "center",
+    gap: 10,
+    alignItems: "center",
+  },
+
+  unlockBtn: {
+    padding: "6px 12px",
+    borderRadius: 8,
+    border: "none",
+    cursor: "pointer",
+  },
+
   messages: {
     flex: 1,
-    overflowY: "scroll",
-    padding: 10,
+    overflowY: "auto",
+    padding: 15,
   },
-  inputBox: {
+
+  bubble: {
+    padding: 12,
+    borderRadius: 12,
+    maxWidth: "70%",
+    color: "#fff",
+    fontSize: 14,
+  },
+
+  meta: {
+    fontSize: 10,
+    marginTop: 5,
+    opacity: 0.7,
+    textAlign: "right",
+  },
+
+  inputArea: {
     display: "flex",
     padding: 10,
-    background: "#111",
+    background: "rgba(255,255,255,0.05)",
+    backdropFilter: "blur(10px)",
   },
+
   input: {
     flex: 1,
     padding: 10,
-    borderRadius: 8,
+    borderRadius: 10,
     border: "none",
+    outline: "none",
+    background: "#1e293b",
+    color: "#fff",
   },
+
   send: {
     marginLeft: 10,
     padding: "10px 15px",
-    background: "#4caf50",
+    borderRadius: 10,
     border: "none",
-    borderRadius: 8,
+    background: "linear-gradient(135deg,#4f46e5,#06b6d4)",
     color: "#fff",
+    cursor: "pointer",
   },
 };
