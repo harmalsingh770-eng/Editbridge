@@ -1,13 +1,37 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { db } from "../lib/firebase";
-import { collection, onSnapshot } from "firebase/firestore";
+import { db, auth } from "../lib/firebase";
+import {
+  collection,
+  onSnapshot,
+  query,
+  where
+} from "firebase/firestore";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { useRouter } from "next/router";
 import Reviews from "../components/Reviews";
 
 export default function Client() {
   const [editors, setEditors] = useState([]);
+  const [user, setUser] = useState(null);
+  const [approvedEditors, setApprovedEditors] = useState([]);
+  const router = useRouter();
 
+  // 🔐 AUTH CHECK
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      if (!u) {
+        router.push("/login");
+      } else {
+        setUser(u);
+      }
+    });
+
+    return () => unsub();
+  }, []);
+
+  // 📦 FETCH EDITORS
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "editors"), (snap) => {
       const data = snap.docs.map((doc) => ({
@@ -21,12 +45,53 @@ export default function Client() {
     return () => unsub();
   }, []);
 
+  // ✅ CHECK APPROVED PAYMENTS
+  useEffect(() => {
+    if (!user) return;
+
+    const q = query(
+      collection(db, "paymentRequests"),
+      where("uid", "==", user.uid),
+      where("status", "==", "approved")
+    );
+
+    const unsub = onSnapshot(q, (snap) => {
+      const list = snap.docs.map((doc) => doc.data().editorId);
+      setApprovedEditors(list);
+    });
+
+    return () => unsub();
+  }, [user]);
+
+  // 💸 GO TO PAY PAGE (/pay/[editorId])
+  const goToPay = (editorId) => {
+    router.push(`/pay/${editorId}`);
+  };
+
+  // 💬 OPEN CHAT
+  const openChat = (editorId) => {
+    router.push(`/chat?editorId=${editorId}`);
+  };
+
+  // 🚪 LOGOUT
+  const handleLogout = async () => {
+    await signOut(auth);
+    router.push("/");
+  };
+
   return (
     <div style={s.page}>
       {/* HEADER */}
       <div style={s.header}>
         <h1 style={s.logo}>🎬 EditBridge</h1>
-        <button style={s.cta}>🚀 Get Started</button>
+
+        <div style={{ display: "flex", gap: 10 }}>
+          <button style={s.cta}>🚀 Get Started</button>
+
+          <button style={s.logout} onClick={handleLogout}>
+            Logout
+          </button>
+        </div>
       </div>
 
       {/* HERO */}
@@ -42,20 +107,41 @@ export default function Client() {
 
       {/* EDITORS */}
       <div style={s.grid}>
-        {editors.map((editor) => (
-          <div key={editor.id} style={s.card}>
-            <h2>{editor.name}</h2>
+        {editors.map((editor) => {
+          const isUnlocked = approvedEditors.includes(editor.id);
 
-            <p style={s.skills}>
-              {editor.skills?.join(", ")}
-            </p>
+          return (
+            <div key={editor.id} style={s.card}>
+              <h2>{editor.name}</h2>
 
-            <p style={s.price}>₹{editor.price}</p>
+              <p style={s.skills}>
+                {editor.skills?.join(", ")}
+              </p>
 
-            {/* ⭐ Reviews */}
-            <Reviews editorId={editor.id} />
-          </div>
-        ))}
+              <p style={s.price}>₹{editor.price}</p>
+
+              {/* 🔥 PAY / CHAT */}
+              {!isUnlocked ? (
+                <button
+                  style={s.payBtn}
+                  onClick={() => goToPay(editor.id)}
+                >
+                  💸 Pay ₹10 to Unlock Chat
+                </button>
+              ) : (
+                <button
+                  style={s.chatBtn}
+                  onClick={() => openChat(editor.id)}
+                >
+                  💬 Chat with Editor
+                </button>
+              )}
+
+              {/* ⭐ REVIEWS */}
+              <Reviews editorId={editor.id} />
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -81,11 +167,20 @@ const s = {
   },
 
   cta: {
-    padding: "10px 18px",
-    borderRadius: 12,
+    padding: "10px 16px",
+    borderRadius: 10,
     background: "#6366f1",
     border: "none",
     color: "white"
+  },
+
+  logout: {
+    padding: "10px 16px",
+    borderRadius: 10,
+    background: "#ef4444",
+    border: "none",
+    color: "white",
+    cursor: "pointer"
   },
 
   hero: {
@@ -132,5 +227,27 @@ const s = {
   price: {
     marginTop: 8,
     fontWeight: "bold"
+  },
+
+  payBtn: {
+    marginTop: 10,
+    padding: 10,
+    width: "100%",
+    background: "#f59e0b",
+    border: "none",
+    borderRadius: 10,
+    color: "white",
+    cursor: "pointer"
+  },
+
+  chatBtn: {
+    marginTop: 10,
+    padding: 10,
+    width: "100%",
+    background: "#22c55e",
+    border: "none",
+    borderRadius: 10,
+    color: "white",
+    cursor: "pointer"
   }
 };
