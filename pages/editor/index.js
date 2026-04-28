@@ -11,13 +11,15 @@ export default function Editor() {
 
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showSettings, setShowSettings] = useState(false);
 
   const [profile, setProfile] = useState({
     name: "",
     bio: "",
     price: "",
     skills: "",
-    portfolio: []
+    portfolio: [],
+    active: true
   });
 
   useEffect(() => {
@@ -44,8 +46,10 @@ export default function Editor() {
       doc(db, "editors", user.uid),
       {
         ...profile,
-        skills: profile.skills.split(",").map(s => s.trim()),
-        active: true,
+        skills: typeof profile.skills === "string"
+          ? profile.skills.split(",").map(s => s.trim())
+          : profile.skills,
+        active: profile.active,
         approved: true,
         email: user.email
       },
@@ -65,9 +69,13 @@ export default function Editor() {
         <h2>🎬 Editor Dashboard</h2>
 
         <div style={{display:"flex",gap:10}}>
-          {/* 🔥 INBOX BUTTON */}
           <button style={s.inbox} onClick={()=>router.push("/editor/inbox")}>
             Inbox
+          </button>
+
+          {/* 🔥 SETTINGS BUTTON */}
+          <button style={s.settings} onClick={()=>setShowSettings(true)}>
+            Settings
           </button>
 
           <button onClick={() => signOut(auth)} style={s.logout}>
@@ -96,7 +104,7 @@ export default function Editor() {
 
         <input
           placeholder="Skills"
-          value={profile.skills?.join?.(", ") || ""}
+          value={profile.skills?.join?.(", ") || profile.skills || ""}
           onChange={(e) => setProfile({ ...profile, skills: e.target.value })}
           style={s.input}
         />
@@ -112,6 +120,59 @@ export default function Editor() {
       <button onClick={saveProfile} style={s.save}>
         Save Profile
       </button>
+
+      {/* 🔥 SETTINGS MODAL */}
+      {showSettings && (
+        <div style={s.modal}>
+          <div style={s.modalCard}>
+            <h3>⚙️ Settings</h3>
+
+            {/* ACTIVE TOGGLE */}
+            <div style={{marginTop:10}}>
+              <label>Active Status:</label>
+              <button
+                style={{
+                  marginLeft:10,
+                  background: profile.active ? "#22c55e" : "#ef4444",
+                  padding:"6px 10px",
+                  border:"none",
+                  borderRadius:6,
+                  color:"white"
+                }}
+                onClick={() =>
+                  setProfile({ ...profile, active: !profile.active })
+                }
+              >
+                {profile.active ? "ON" : "OFF"}
+              </button>
+            </div>
+
+            {/* PORTFOLIO EDIT */}
+            <textarea
+              placeholder="Portfolio Links (comma separated)"
+              value={profile.portfolio?.join?.(", ") || ""}
+              onChange={(e) =>
+                setProfile({
+                  ...profile,
+                  portfolio: e.target.value.split(",").map(p => p.trim())
+                })
+              }
+              style={s.input}
+            />
+
+            <button onClick={saveProfile} style={s.save}>
+              Save Settings
+            </button>
+
+            <button
+              onClick={()=>setShowSettings(false)}
+              style={{...s.logout, marginTop:10}}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -130,6 +191,13 @@ const s = {
   },
   inbox:{
     background:"#6366f1",
+    border:"none",
+    padding:"8px 12px",
+    borderRadius:8,
+    color:"white"
+  },
+  settings:{
+    background:"#0ea5e9",
     border:"none",
     padding:"8px 12px",
     borderRadius:8,
@@ -161,5 +229,25 @@ const s = {
     border:"none",
     borderRadius:10,
     color:"white"
+  },
+
+  /* MODAL */
+  modal:{
+    position:"fixed",
+    top:0,
+    left:0,
+    width:"100%",
+    height:"100%",
+    background:"rgba(0,0,0,0.7)",
+    display:"flex",
+    justifyContent:"center",
+    alignItems:"center"
+  },
+  modalCard:{
+    background:"#1e293b",
+    padding:20,
+    borderRadius:12,
+    width:"90%",
+    maxWidth:400
   }
 };
