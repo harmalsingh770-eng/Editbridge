@@ -3,8 +3,15 @@
 import { useEffect, useState, useRef } from "react";
 import { db, auth } from "../../lib/firebase";
 import {
-  collection, addDoc, query, orderBy, where,
-  onSnapshot, serverTimestamp, doc, getDoc, updateDoc
+  collection,
+  addDoc,
+  query,
+  orderBy,
+  onSnapshot,
+  serverTimestamp,
+  doc,
+  getDoc,
+  updateDoc
 } from "firebase/firestore";
 import { useRouter } from "next/router";
 
@@ -15,7 +22,6 @@ export default function Chat() {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [isPaid, setIsPaid] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [deal, setDeal] = useState(null);
 
   const bottomRef = useRef(null);
@@ -25,23 +31,18 @@ export default function Chat() {
   useEffect(() => {
     if (!chatId || !user) return;
 
-    const [clientId, editorId] = chatId.split("_");
+    const ref = doc(db, "clientAccess", chatId);
 
-    if (user.uid === editorId) {
-      setIsPaid(true);
-      setLoading(false);
-      return;
-    }
-
-    getDoc(doc(db, "clientAccess", chatId)).then(snap => {
-      setIsPaid(snap.exists() && snap.data().status === "approved");
-      setLoading(false);
+    getDoc(ref).then(snap => {
+      if (snap.exists() && snap.data().status === "approved") {
+        setIsPaid(true);
+      }
     });
   }, [chatId]);
 
-  // 💬 MESSAGES
+  // 💬 MESSAGES + 👁 SEEN TICKS
   useEffect(() => {
-    if (!chatId) return;
+    if (!chatId || !user) return;
 
     const q = query(
       collection(db, "chats", chatId, "messages"),
@@ -49,23 +50,34 @@ export default function Chat() {
     );
 
     return onSnapshot(q, snap => {
-      setMessages(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const msgs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setMessages(msgs);
+
+      // MARK AS SEEN
+      msgs.forEach(async (m) => {
+        if (m.sender !== user.uid && !m.seenBy?.includes(user.uid)) {
+          await updateDoc(doc(db, "chats", chatId, "messages", m.id), {
+            seenBy: [...(m.seenBy || []), user.uid]
+          });
+        }
+      });
+
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
     });
   }, [chatId]);
 
-  // 💼 DEAL
+  // 💰 DEAL SYSTEM
   useEffect(() => {
     if (!chatId) return;
 
-    const q = query(collection(db, "deals"), where("chatId", "==", chatId));
+    const q = query(collection(db, "deals"), orderBy("createdAt"));
 
     return onSnapshot(q, snap => {
-      if (!snap.empty) {
-        setDeal({ id: snap.docs[0].id, ...snap.docs[0].data() });
-      } else {
-        setDeal(null);
-      }
+      const d = snap.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .find(x => x.chatId === chatId);
+
+      setDeal(d || null);
     });
   }, [chatId]);
 
@@ -75,19 +87,20 @@ export default function Chat() {
     await addDoc(collection(db, "chats", chatId, "messages"), {
       text,
       sender: user.uid,
+      seenBy: [user.uid],
       createdAt: serverTimestamp()
     });
 
     setText("");
   };
 
-  const sendDeal = async () => {
-    const price = prompt("Enter price");
+  const createDeal = async () => {
+    const price = prompt("Enter deal amount ₹");
     if (!price) return;
 
     await addDoc(collection(db, "deals"), {
       chatId,
-      clientId: user.uid,
+      createdBy: user.uid,
       price: Number(price),
       status: "pending",
       createdAt: serverTimestamp()
@@ -95,8 +108,7 @@ export default function Chat() {
   };
 
   const acceptDeal = async () => {
-    if (!confirm("Accept?")) return;
-    if (!confirm("Final confirm?")) return;
+    if (!confirm("Accept deal?")) return;
 
     await updateDoc(doc(db, "deals", deal.id), {
       status: "accepted"
@@ -104,22 +116,12 @@ export default function Chat() {
   };
 
   const rejectDeal = async () => {
+    if (!confirm("Reject deal?")) return;
+
     await updateDoc(doc(db, "deals", deal.id), {
       status: "rejected"
     });
   };
-
-  const counterDeal = async () => {
-    const price = prompt("Counter price");
-    if (!price) return;
-
-    await updateDoc(doc(db, "deals", deal.id), {
-      price: Number(price),
-      status: "counter"
-    });
-  };
-
-  if (loading) return <div style={s.loader}>Loading...</div>;
 
   if (!isPaid) {
     return (
@@ -135,54 +137,174 @@ export default function Chat() {
   return (
     <div style={s.page}>
 
+      {/* HEADER */}
       <div style={s.header}>
-        <button onClick={() => router.back()}>←</button>
-        <h3>Chat</h3>
+        <h3>💬 Chat</h3>
       </div>
 
+      {/* MESSAGES */}
+      <div style={s.chat}>
+        {messages.map(m => {
+          const me = m.sender === user.uid;
+          const seenCount = m.seenBy?.length || 0;
+
+          let ticks = "✓";
+          if (seenCount >= 2) ticks = "✓✓";
+
+          return (
+            <div
+              key={m.id}
+              style={{
+                ...s.msg,
+                alignSelf: me ? "flex-end" : "flex-start",
+                background: me
+                  ? "linear-gradient(135deg,#7c3aed,#6366f1)"
+                  : "#1e293b"
+              }}
+            >
+              <div>{m.text}</div>
+
+              {me && (
+                <div style={{
+                  fontSize: 10,
+                  marginTop: 4,
+                  textAlign: "right",
+                  color: seenCount >= 2 ? "#38bdf8" : "#94a3b8"
+                }}>
+                  {ticks}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        <div ref={bottomRef}/>
+      </div>
+
+      {/* DEAL */}
       {deal && (
         <div style={s.dealBox}>
-          <b>₹{deal.price}</b> ({deal.status})
+          💰 ₹{deal.price} — {deal.status}
+
           {deal.status === "pending" && (
-            <>
-              <button onClick={acceptDeal}>Accept</button>
-              <button onClick={rejectDeal}>Reject</button>
-              <button onClick={counterDeal}>Counter</button>
-            </>
+            <div style={{ marginTop: 6 }}>
+              <button onClick={acceptDeal} style={s.accept}>Accept</button>
+              <button onClick={rejectDeal} style={s.reject}>Reject</button>
+            </div>
           )}
         </div>
       )}
 
-      <button onClick={sendDeal} style={s.dealBtn}>Send Deal</button>
+      <button onClick={createDeal} style={s.dealBtn}>
+        💰 Create Deal
+      </button>
 
-      <div style={s.chat}>
-        {messages.map(m => (
-          <div key={m.id} style={{
-            ...s.msg,
-            alignSelf: m.sender === user.uid ? "flex-end" : "flex-start"
-          }}>
-            {m.text}
-          </div>
-        ))}
-        <div ref={bottomRef}/>
-      </div>
-
+      {/* INPUT */}
       <div style={s.inputRow}>
-        <input value={text} onChange={e => setText(e.target.value)} />
-        <button onClick={send}>Send</button>
+        <input
+          value={text}
+          onChange={e => setText(e.target.value)}
+          placeholder="Type message..."
+          style={s.input}
+        />
+        <button onClick={send} style={s.send}>Send</button>
       </div>
+
     </div>
   );
 }
 
 const s = {
-  page:{height:"100vh",display:"flex",flexDirection:"column",background:"#020617",color:"white"},
-  header:{display:"flex",gap:10,padding:10,borderBottom:"1px solid #333"},
-  chat:{flex:1,padding:10,display:"flex",flexDirection:"column",gap:8},
-  msg:{padding:10,borderRadius:10,background:"#1e293b",maxWidth:"70%"},
-  inputRow:{display:"flex",padding:10,gap:8},
-  dealBox:{background:"#1e293b",padding:10,margin:10,borderRadius:10},
-  dealBtn:{margin:10,padding:10,background:"#7c3aed",border:"none",color:"white"},
-  lock:{height:"100vh",display:"flex",justifyContent:"center",alignItems:"center",flexDirection:"column"},
-  loader:{height:"100vh",display:"flex",justifyContent:"center",alignItems:"center"}
+  page:{
+    height:"100vh",
+    display:"flex",
+    flexDirection:"column",
+    background:"linear-gradient(135deg,#020617,#0f172a,#1e1b4b)",
+    color:"white"
+  },
+
+  header:{
+    padding:14,
+    borderBottom:"1px solid rgba(255,255,255,0.08)"
+  },
+
+  chat:{
+    flex:1,
+    padding:12,
+    display:"flex",
+    flexDirection:"column",
+    gap:10,
+    overflowY:"auto"
+  },
+
+  msg:{
+    padding:"10px 14px",
+    borderRadius:14,
+    maxWidth:"75%",
+    fontSize:14
+  },
+
+  dealBox:{
+    margin:10,
+    padding:12,
+    borderRadius:12,
+    background:"#1e293b",
+    textAlign:"center"
+  },
+
+  dealBtn:{
+    margin:"0 10px",
+    padding:10,
+    borderRadius:10,
+    background:"#f59e0b",
+    border:"none",
+    color:"white"
+  },
+
+  accept:{
+    marginRight:6,
+    background:"#10b981",
+    border:"none",
+    padding:"6px 10px",
+    borderRadius:8,
+    color:"white"
+  },
+
+  reject:{
+    background:"#ef4444",
+    border:"none",
+    padding:"6px 10px",
+    borderRadius:8,
+    color:"white"
+  },
+
+  inputRow:{
+    display:"flex",
+    gap:8,
+    padding:10
+  },
+
+  input:{
+    flex:1,
+    padding:10,
+    borderRadius:10,
+    background:"#1e293b",
+    border:"none",
+    color:"white"
+  },
+
+  send:{
+    padding:"10px 16px",
+    background:"#7c3aed",
+    border:"none",
+    borderRadius:10,
+    color:"white"
+  },
+
+  lock:{
+    height:"100vh",
+    display:"flex",
+    justifyContent:"center",
+    alignItems:"center",
+    flexDirection:"column"
+  }
 };
