@@ -49,6 +49,7 @@ export default function Editor() {
         skills: typeof profile.skills === "string"
           ? profile.skills.split(",").map(s => s.trim())
           : profile.skills,
+        portfolio: profile.portfolio,
         active: profile.active,
         approved: true,
         email: user.email
@@ -63,7 +64,6 @@ export default function Editor() {
 
   return (
     <div style={s.page}>
-
       {/* HEADER */}
       <div style={s.header}>
         <h2>🎬 Editor Dashboard</h2>
@@ -73,7 +73,6 @@ export default function Editor() {
             Inbox
           </button>
 
-          {/* 🔥 SETTINGS BUTTON */}
           <button style={s.settings} onClick={()=>setShowSettings(true)}>
             Settings
           </button>
@@ -121,15 +120,15 @@ export default function Editor() {
         Save Profile
       </button>
 
-      {/* 🔥 SETTINGS MODAL */}
+      {/* SETTINGS */}
       {showSettings && (
         <div style={s.modal}>
           <div style={s.modalCard}>
             <h3>⚙️ Settings</h3>
 
-            {/* ACTIVE TOGGLE */}
-            <div style={{marginTop:10}}>
-              <label>Active Status:</label>
+            {/* ACTIVE */}
+            <div>
+              <label>Active:</label>
               <button
                 style={{
                   marginLeft:10,
@@ -147,10 +146,10 @@ export default function Editor() {
               </button>
             </div>
 
-            {/* PORTFOLIO EDIT */}
+            {/* PORTFOLIO */}
             <textarea
-              placeholder="Portfolio Links (comma separated)"
-              value={profile.portfolio?.join?.(", ") || ""}
+              placeholder="Portfolio links (comma separated)"
+              value={profile.portfolio?.join(", ") || ""}
               onChange={(e) =>
                 setProfile({
                   ...profile,
@@ -161,7 +160,7 @@ export default function Editor() {
             />
 
             <button onClick={saveProfile} style={s.save}>
-              Save Settings
+              Save
             </button>
 
             <button
@@ -178,76 +177,14 @@ export default function Editor() {
 }
 
 const s = {
-  page:{
-    minHeight:"100vh",
-    padding:20,
-    background:"linear-gradient(135deg,#020617,#0f172a,#1e1b4b)",
-    color:"white"
-  },
-  header:{
-    display:"flex",
-    justifyContent:"space-between",
-    marginBottom:20
-  },
-  inbox:{
-    background:"#6366f1",
-    border:"none",
-    padding:"8px 12px",
-    borderRadius:8,
-    color:"white"
-  },
-  settings:{
-    background:"#0ea5e9",
-    border:"none",
-    padding:"8px 12px",
-    borderRadius:8,
-    color:"white"
-  },
-  logout:{
-    background:"#ef4444",
-    border:"none",
-    padding:"8px 12px",
-    borderRadius:8,
-    color:"white"
-  },
-  card:{
-    background:"rgba(30,41,59,0.6)",
-    padding:16,
-    borderRadius:12
-  },
-  input:{
-    width:"100%",
-    padding:10,
-    marginTop:8,
-    borderRadius:8
-  },
-  save:{
-    marginTop:20,
-    width:"100%",
-    padding:12,
-    background:"#7c3aed",
-    border:"none",
-    borderRadius:10,
-    color:"white"
-  },
-
-  /* MODAL */
-  modal:{
-    position:"fixed",
-    top:0,
-    left:0,
-    width:"100%",
-    height:"100%",
-    background:"rgba(0,0,0,0.7)",
-    display:"flex",
-    justifyContent:"center",
-    alignItems:"center"
-  },
-  modalCard:{
-    background:"#1e293b",
-    padding:20,
-    borderRadius:12,
-    width:"90%",
-    maxWidth:400
-  }
+  page:{ minHeight:"100vh", padding:20, background:"#020617", color:"white" },
+  header:{ display:"flex", justifyContent:"space-between", marginBottom:20 },
+  inbox:{ background:"#6366f1", padding:8, borderRadius:8, color:"white" },
+  settings:{ background:"#0ea5e9", padding:8, borderRadius:8, color:"white" },
+  logout:{ background:"#ef4444", padding:8, borderRadius:8, color:"white" },
+  card:{ background:"#1e293b", padding:16, borderRadius:12 },
+  input:{ width:"100%", padding:10, marginTop:8, borderRadius:8 },
+  save:{ marginTop:20, width:"100%", padding:12, background:"#7c3aed", borderRadius:10, color:"white" },
+  modal:{ position:"fixed", top:0, left:0, width:"100%", height:"100%", background:"rgba(0,0,0,0.7)", display:"flex", justifyContent:"center", alignItems:"center" },
+  modalCard:{ background:"#1e293b", padding:20, borderRadius:12, width:"90%", maxWidth:400 }
 };
