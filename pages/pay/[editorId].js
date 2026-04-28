@@ -1,277 +1,146 @@
 import { useRouter } from "next/router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { db, auth } from "../../lib/firebase";
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+import {
+  addDoc,
+  collection,
+  serverTimestamp
+} from "firebase/firestore";
 
-// 鉁� SET YOUR UPI ID HERE
-const UPI_ID = "yourupi@okaxis";
-const AMOUNT = 10;
-const UPI_NAME = "EditBridge";
-
-export default function PaymentPage() {
+export default function Payment() {
   const router = useRouter();
-  const { chatId, editorId } = router.query;
+  const { editorId } = router.query;
 
   const [txnId, setTxnId] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  // 鉁� UPI deep link for one-tap payment
-  const upiLink = `upi://pay?pa=${UPI_ID}&pn=${encodeURIComponent(UPI_NAME)}&am=${AMOUNT}&cu=INR`;
+  // ✅ FIXED AMOUNT
+  const amount = 10;
+
+  // ✅ UPI LINK
+  const upiLink = `upi://pay?pa=yourupi@upi&pn=EditBridge&am=${amount}&cu=INR`;
 
   const submit = async () => {
-    if (!txnId.trim()) return alert("Please enter the Transaction ID after paying");
+    if (!txnId) return alert("Enter transaction ID");
+    if (!auth.currentUser) return alert("Login required");
 
-    setSubmitting(true);
+    setLoading(true);
 
     try {
       await addDoc(collection(db, "paymentRequests"), {
         uid: auth.currentUser.uid,
-        email: auth.currentUser.email,
-        editorId: editorId || "",
-        chatId: chatId || "",
-        txnId: txnId.trim(),
-        status: "pending",
-        createdAt: serverTimestamp(),
+        editorId: editorId,
+        txnId: txnId,
+        status: "pending", // ✅ STRING (important)
+        createdAt: serverTimestamp()
       });
 
-      setSubmitted(true);
+      alert("Payment submitted. Wait for admin approval.");
+      router.push("/client");
+
     } catch (err) {
-      alert("Error submitting: " + err.message);
+      alert(err.message);
     }
 
-    setSubmitting(false);
+    setLoading(false);
   };
-
-  if (submitted) {
-    return (
-      <div style={s.page}>
-        <style>{css}</style>
-        <div style={s.successCard}>
-          <div style={s.successIcon}>鉁�</div>
-          <h2>Payment Submitted!</h2>
-          <p style={{ color: "#94a3b8", fontSize: 14 }}>
-            Admin will verify your payment and unlock the chat shortly.
-          </p>
-          <button onClick={() => router.push("/client")} style={s.backBtn}>
-            鈫� Back to Home
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div style={s.page}>
-      <style>{css}</style>
-
       <div style={s.card}>
-        {/* HEADER */}
-        <h2 style={s.title}>馃挵 Unlock Chat</h2>
-        <p style={s.subtitle}>Pay 鈧箋AMOUNT} to start chatting with this editor</p>
+        <h2 style={s.title}>🔒 Unlock Chat</h2>
 
-        {/* STEP 1 - PAY */}
-        <div style={s.step}>
-          <div style={s.stepNum}>1</div>
-          <div style={s.stepText}>Pay via UPI</div>
-        </div>
+        <p style={s.subtitle}>
+          Pay ₹{amount} to start chatting with editor
+        </p>
 
-        {/* QR CODE */}
-        <div style={s.qrWrap}>
-          <img
-            src="/qr.png"
-            alt="UPI QR Code"
-            style={s.qr}
-            onError={(e) => { e.target.style.display = "none"; }}
-          />
-        </div>
-
-        {/* UPI ID */}
-        <div style={s.upiBox}>
-          <span style={s.upiLabel}>UPI ID</span>
-          <span style={s.upiId}>{UPI_ID}</span>
-          <button
-            style={s.copyBtn}
-            onClick={() => {
-              navigator.clipboard.writeText(UPI_ID);
-              alert("UPI ID copied!");
-            }}
-          >
-            Copy
-          </button>
-        </div>
-
-        {/* ONE-TAP UPI BUTTON */}
-        <a href={upiLink} style={s.upiDeepLink}>
-          馃摬 Open UPI App to Pay 鈧箋AMOUNT}
+        {/* ✅ UPI BUTTON */}
+        <a href={upiLink} style={s.upiBtn}>
+          Open UPI App
         </a>
 
-        <p style={s.orText}>鈥� or scan QR code above 鈥�</p>
-
-        {/* STEP 2 - SUBMIT TXN */}
-        <div style={s.step}>
-          <div style={s.stepNum}>2</div>
-          <div style={s.stepText}>Enter Transaction ID</div>
-        </div>
+        <p style={s.note}>After payment, paste transaction ID below</p>
 
         <input
-          placeholder="Paste Transaction / UTR ID here"
+          placeholder="Enter Transaction ID"
           value={txnId}
           onChange={(e) => setTxnId(e.target.value)}
           style={s.input}
         />
 
-        <button onClick={submit} style={s.submitBtn} disabled={submitting}>
-          {submitting ? "Submitting..." : "Submit Payment 鉁�"}
-        </button>
-
-        <button onClick={() => router.back()} style={s.cancelBtn}>
-          Cancel
+        <button onClick={submit} style={s.btn} disabled={loading}>
+          {loading ? "Submitting..." : "Submit Payment"}
         </button>
       </div>
     </div>
   );
 }
 
-const css = `
-  body { margin: 0; font-family: sans-serif; }
-  a { text-decoration: none; }
-`;
-
 const s = {
   page: {
     minHeight: "100vh",
     background: "linear-gradient(135deg,#020617,#0f172a,#1e1b4b)",
-    color: "white",
     display: "flex",
     justifyContent: "center",
-    alignItems: "flex-start",
-    padding: "30px 16px",
+    alignItems: "center",
+    color: "white"
   },
+
   card: {
-    width: "100%",
-    maxWidth: 400,
-    background: "rgba(30,41,59,0.9)",
-    borderRadius: 20,
-    padding: 28,
-    border: "1px solid rgba(255,255,255,0.08)",
+    width: 320,
+    padding: 25,
+    borderRadius: 16,
+    background: "rgba(30,27,75,0.6)",
+    backdropFilter: "blur(20px)",
+    border: "1px solid rgba(255,255,255,0.1)"
   },
-  title: { margin: "0 0 6px 0", fontSize: 22, fontWeight: 800, textAlign: "center" },
-  subtitle: { color: "#94a3b8", fontSize: 14, textAlign: "center", margin: "0 0 24px 0" },
-  step: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    marginBottom: 14,
-  },
-  stepNum: {
-    width: 28,
-    height: 28,
-    borderRadius: "50%",
-    background: "#7c3aed",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
+
+  title: {
+    fontSize: 20,
     fontWeight: 700,
-    fontSize: 13,
-    flexShrink: 0,
+    marginBottom: 10
   },
-  stepText: { fontWeight: 600, fontSize: 15 },
-  qrWrap: {
-    display: "flex",
-    justifyContent: "center",
-    marginBottom: 14,
-    background: "white",
-    borderRadius: 12,
-    padding: 12,
+
+  subtitle: {
+    fontSize: 14,
+    color: "#94a3b8",
+    marginBottom: 15
   },
-  qr: { width: 180, height: 180, objectFit: "contain" },
-  upiBox: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    background: "#0f172a",
-    borderRadius: 10,
-    padding: "10px 14px",
-    marginBottom: 12,
-  },
-  upiLabel: { color: "#94a3b8", fontSize: 12 },
-  upiId: { flex: 1, fontWeight: 600, fontSize: 14 },
-  copyBtn: {
-    background: "#334155",
-    border: "none",
-    color: "white",
-    padding: "4px 10px",
-    borderRadius: 6,
-    cursor: "pointer",
-    fontSize: 12,
-  },
-  upiDeepLink: {
+
+  upiBtn: {
     display: "block",
     textAlign: "center",
+    padding: 12,
+    borderRadius: 10,
     background: "#22c55e",
     color: "white",
-    padding: "12px 0",
-    borderRadius: 12,
-    fontWeight: 700,
-    fontSize: 15,
+    textDecoration: "none",
     marginBottom: 10,
+    fontWeight: 600
   },
-  orText: {
-    textAlign: "center",
-    color: "#475569",
+
+  note: {
     fontSize: 12,
-    margin: "0 0 20px 0",
+    color: "#94a3b8",
+    marginBottom: 8
   },
+
   input: {
     width: "100%",
-    padding: "12px 14px",
-    borderRadius: 10,
-    border: "1px solid rgba(255,255,255,0.1)",
-    background: "#0f172a",
-    color: "white",
-    fontSize: 14,
-    outline: "none",
-    marginBottom: 12,
-    boxSizing: "border-box",
-  },
-  submitBtn: {
-    width: "100%",
-    padding: 13,
-    background: "#7c3aed",
+    padding: 10,
+    borderRadius: 8,
     border: "none",
-    color: "white",
-    borderRadius: 12,
-    fontWeight: 700,
-    fontSize: 15,
-    cursor: "pointer",
     marginBottom: 10,
+    outline: "none"
   },
-  cancelBtn: {
+
+  btn: {
     width: "100%",
-    padding: 11,
-    background: "transparent",
-    border: "1px solid rgba(255,255,255,0.1)",
-    color: "#94a3b8",
-    borderRadius: 12,
-    cursor: "pointer",
-    fontSize: 14,
-  },
-  successCard: {
-    textAlign: "center",
-    padding: 40,
-    maxWidth: 340,
-    margin: "0 auto",
-  },
-  successIcon: { fontSize: 60, marginBottom: 16 },
-  backBtn: {
-    marginTop: 20,
-    padding: "12px 24px",
-    background: "#7c3aed",
+    padding: 12,
+    borderRadius: 10,
     border: "none",
+    background: "#7c3aed",
     color: "white",
-    borderRadius: 12,
-    cursor: "pointer",
-    fontWeight: 600,
-  },
+    fontWeight: 700
+  }
 };
