@@ -1,118 +1,53 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
-import { auth, db } from "../../lib/firebase";
-import { collection, query, where, onSnapshot, doc, getDoc } from "firebase/firestore";
-import { onAuthStateChanged } from "firebase/auth";
-import { useRouter } from "next/router";
+import { useEffect, useState } from "react";
+import { db, auth } from "../../lib/firebase";
+import {
+  collection,
+  query,
+  where,
+  onSnapshot,
+} from "firebase/firestore";
+import { useRouter } from "next/navigation";
 
-export default function Inbox() {
+export default function EditorInbox() {
   const [chats, setChats] = useState([]);
-  const [loading, setLoading] = useState(true);
   const router = useRouter();
-  const unsubAuthRef = useRef(null);
-  const unsubChatsRef = useRef(null);
 
   useEffect(() => {
-    unsubAuthRef.current = onAuthStateChanged(auth, (u) => {
-      if (!u) return router.replace("/login?type=editor");
+    const q = query(
+      collection(db, "chats"),
+      where("editorId", "==", auth.currentUser.uid),
+      where("visibleToEditor", "==", true)
+    );
 
-      const q = query(
-        collection(db, "chats"),
-        where("users", "array-contains", u.uid)
+    const unsub = onSnapshot(q, (snap) => {
+      setChats(
+        snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
       );
-
-      unsubChatsRef.current = onSnapshot(q, async (snap) => {
-        const list = await Promise.all(
-          snap.docs.map(async (d) => {
-            const data = d.data();
-            const otherUid = data.users?.find(id => id !== u.uid);
-            let otherName = "Client";
-
-            if (otherUid) {
-              try {
-                const uSnap = await getDoc(doc(db, "users", otherUid));
-                if (uSnap.exists()) otherName = uSnap.data().email || "Client";
-                else {
-                  const edSnap = await getDoc(doc(db, "editors", otherUid));
-                  if (edSnap.exists()) otherName = edSnap.data().name || "Editor";
-                  else otherName = "Admin";
-                }
-              } catch {}
-            }
-
-            return { id: d.id, ...data, otherName };
-          })
-        );
-        setChats(list);
-        setLoading(false);
-      });
     });
 
-    return () => {
-      if (unsubAuthRef.current) unsubAuthRef.current();
-      if (unsubChatsRef.current) unsubChatsRef.current();
-    };
+    return () => unsub();
   }, []);
 
-  if (loading) return (
-    <div style={s.loaderPage}>
-      <style>{css}</style>
-      <div style={s.spinner}></div>
-    </div>
-  );
-
   return (
-    <div style={s.page}>
-      <style>{css}</style>
-      <div style={s.header}>
-        <button onClick={() => router.push("/editor")} style={s.backBtn}>Back</button>
-        <h2 style={s.title}>Inbox</h2>
-        <div style={{ width: 60 }} />
-      </div>
+    <div className="p-4 bg-black min-h-screen text-white">
+      <h1 className="text-xl mb-4">Inbox</h1>
 
-      {chats.length === 0 ? (
-        <div style={s.empty}>
-          <div style={{ fontSize: 48, marginBottom: 12 }}>📭</div>
-          <p style={{ fontWeight: 600, margin: 0 }}>No chats yet</p>
-          <p style={{ color: "#94a3b8", fontSize: 13, marginTop: 6 }}>Clients will appear here after paying</p>
+      {chats.length === 0 && <p>No chats yet</p>}
+
+      {chats.map((chat) => (
+        <div
+          key={chat.id}
+          onClick={() => router.push(`/editor/chat/${chat.id}`)}
+          className="p-3 mb-2 bg-gray-800 rounded cursor-pointer"
+        >
+          Client Chat
+          <p className="text-xs text-green-400">
+            {chat.clientOnline ? "Active" : "Offline"}
+          </p>
         </div>
-      ) : (
-        <div style={s.list}>
-          {chats.map(c => (
-            <div key={c.id} style={s.card} onClick={() => router.push("/chat/" + c.id)}>
-              <div style={s.avatar}>{c.otherName?.[0]?.toUpperCase() || "C"}</div>
-              <div style={s.info}>
-                <div style={s.name}>{c.otherName}</div>
-                <div style={s.lastMsg}>{c.lastMessage || "No messages yet"}</div>
-              </div>
-              <div style={s.arrow}>{">"}</div>
-            </div>
-          ))}
-        </div>
-      )}
+      ))}
     </div>
   );
 }
-
-const css = `
-  body { margin: 0; font-family: sans-serif; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-`;
-
-const s = {
-  page: { minHeight: "100vh", background: "linear-gradient(135deg,#020617,#0f172a,#1e1b4b)", color: "white" },
-  loaderPage: { height: "100vh", display: "flex", justifyContent: "center", alignItems: "center", background: "#020617" },
-  spinner: { width: 32, height: 32, border: "3px solid #333", borderTop: "3px solid #7c3aed", borderRadius: "50%", animation: "spin 1s linear infinite" },
-  header: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", borderBottom: "1px solid rgba(255,255,255,0.08)" },
-  backBtn: { background: "none", border: "1px solid rgba(255,255,255,0.15)", color: "white", fontSize: 14, cursor: "pointer", padding: "6px 14px", borderRadius: 8 },
-  title: { margin: 0, fontSize: 18, fontWeight: 700 },
-  list: { padding: 16, display: "flex", flexDirection: "column", gap: 10 },
-  card: { display: "flex", alignItems: "center", gap: 14, background: "#1e293b", padding: "14px 16px", borderRadius: 14, cursor: "pointer", border: "1px solid rgba(255,255,255,0.04)" },
-  avatar: { width: 46, height: 46, borderRadius: "50%", background: "linear-gradient(135deg,#7c3aed,#6366f1)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 18, flexShrink: 0 },
-  info: { flex: 1, minWidth: 0 },
-  name: { fontWeight: 600, fontSize: 15, marginBottom: 3 },
-  lastMsg: { color: "#94a3b8", fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
-  arrow: { color: "#475569", fontSize: 20 },
-  empty: { textAlign: "center", marginTop: 80, padding: 20 },
-};
