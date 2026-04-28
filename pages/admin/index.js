@@ -23,50 +23,78 @@ export default function Admin() {
 
   const [payments, setPayments] = useState([]);
   const [editors, setEditors] = useState([]);
+  const [allChats, setAllChats] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("payments");
 
-  // Chat state
+  // ✅ FIX 2: store adminUid in a ref so openChat always has the latest value
+  const adminUidRef = useRef(null);
+  const [adminUid, setAdminUid] = useState(null);
+
+  // Chat panel state
   const [chatOpen, setChatOpen] = useState(false);
-  const [chatTarget, setChatTarget] = useState(null); // { uid, name, chatId }
+  const [chatTarget, setChatTarget] = useState(null);
   const [messages, setMessages] = useState([]);
   const [msgText, setMsgText] = useState("");
-  const [adminUid, setAdminUid] = useState(null);
   const bottomRef = useRef(null);
+
+  // ✅ FIX 1 & 5: Store all unsub refs properly
   const unsubChatRef = useRef(null);
+  const unsubPayRef = useRef(null);
+  const unsubEditRef = useRef(null);
+  const unsubAllChatsRef = useRef(null);
+
+  // Logout modal
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
 
   const [hideApproved, setHideApproved] = useState(false);
   const [search, setSearch] = useState("");
 
   // 🔐 AUTH
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => {
+    const unsubAuth = onAuthStateChanged(auth, (user) => {
       if (!user) return router.replace("/login");
       if (user.email !== ADMIN_EMAIL) return router.replace("/");
-      setAdminUid(user.uid);
 
-      const unsubPay = onSnapshot(collection(db, "paymentRequests"), (snap) => {
+      // ✅ FIX 2: set both state and ref
+      setAdminUid(user.uid);
+      adminUidRef.current = user.uid;
+
+      // ✅ FIX 1 & 5: store unsub in refs, NOT returned from async callback
+      unsubPayRef.current = onSnapshot(collection(db, "paymentRequests"), (snap) => {
         setPayments(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
       });
 
-      const unsubEdit = onSnapshot(collection(db, "editors"), (snap) => {
+      unsubEditRef.current = onSnapshot(collection(db, "editors"), (snap) => {
         setEditors(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
         setLoading(false);
       });
 
-      return () => { unsubPay(); unsubEdit(); };
+      // ✅ NEW: listen to all chats for Chats tab
+      unsubAllChatsRef.current = onSnapshot(collection(db, "chats"), (snap) => {
+        setAllChats(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      });
     });
 
-    return () => unsub();
+    // ✅ FIX 1: cleanup ALL listeners on unmount
+    return () => {
+      unsubAuth();
+      if (unsubPayRef.current) unsubPayRef.current();
+      if (unsubEditRef.current) unsubEditRef.current();
+      if (unsubAllChatsRef.current) unsubAllChatsRef.current();
+      if (unsubChatRef.current) unsubChatRef.current();
+    };
   }, []);
 
   // 💬 OPEN ADMIN CHAT WITH USER
   const openChat = async (targetUid, targetName) => {
-    // chatId = sorted uids joined by _
-    const ids = [adminUid, targetUid].sort();
+    // ✅ FIX 2: use ref instead of state so it's never null
+    const myUid = adminUidRef.current;
+    if (!myUid) return alert("Auth not ready, try again");
+
+    const ids = [myUid, targetUid].sort();
     const chatId = ids.join("_");
 
-    // ensure chat doc exists
     const chatRef = doc(db, "chats", chatId);
     const chatSnap = await getDoc(chatRef);
     if (!chatSnap.exists()) {
@@ -81,7 +109,6 @@ export default function Admin() {
     setChatTarget({ uid: targetUid, name: targetName, chatId });
     setChatOpen(true);
 
-    // subscribe messages
     if (unsubChatRef.current) unsubChatRef.current();
     const q = query(
       collection(db, "chats", chatId, "messages"),
@@ -106,7 +133,7 @@ export default function Admin() {
     setMsgText("");
     await addDoc(collection(db, "chats", chatTarget.chatId, "messages"), {
       text: msg,
-      sender: adminUid,
+      sender: adminUidRef.current,
       createdAt: serverTimestamp(),
     });
     await setDoc(
@@ -149,6 +176,14 @@ export default function Admin() {
     await deleteDoc(doc(db, "editors", id));
   };
 
+  // ✅ FIX 3: Logout confirmation
+  const handleLogout = () => setShowLogoutModal(true);
+  const confirmLogout = () => {
+    setShowLogoutModal(false);
+    auth.signOut();
+    router.push("/");
+  };
+
   if (loading) {
     return (
       <div style={s.loaderPage}>
@@ -170,17 +205,38 @@ export default function Admin() {
   return (
     <>
       <style>{css}</style>
+
+      {/* ✅ FIX 3: LOGOUT CONFIRMATION MODAL */}
+      {showLogoutModal && (
+        <div style={s.overlay}>
+          <div style={s.modal}>
+            <h3 style={{ margin: "0 0 8px 0" }}>Logout?</h3>
+            <p style={{ color: "#94a3b8", fontSize: 14, margin: "0 0 20px 0" }}>
+              Do you really want to logout?
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => setShowLogoutModal(false)} style={s.modalCancel}>
+                Stay
+              </button>
+              <button onClick={confirmLogout} style={s.modalConfirm}>
+                Yes, Logout
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={s.page}>
 
         {/* HEADER */}
         <div style={s.header}>
-          <div style={s.logo}>🛡 Admin Panel</div>
+          <div style={s.logo}>Admin Panel</div>
           <div style={s.headerRight}>
-            <button onClick={() => router.push("/")} style={s.homeBtn}>🏠 Home</button>
+            <button onClick={() => router.push("/")} style={s.homeBtn}>Home</button>
             <button onClick={() => setHideApproved(!hideApproved)} style={s.toggleBtn}>
-              {hideApproved ? "👁 Show All" : "🙈 Hide Approved"}
+              {hideApproved ? "Show All" : "Hide Approved"}
             </button>
-            <button onClick={() => { auth.signOut(); router.push("/"); }} style={s.logout}>
+            <button onClick={handleLogout} style={s.logout}>
               Logout
             </button>
           </div>
@@ -191,6 +247,7 @@ export default function Admin() {
           <Stat label="Editors" value={editors.length} />
           <Stat label="Pending" value={payments.filter((p) => p.status === "pending").length} />
           <Stat label="Approved" value={payments.filter((p) => p.status === "approved").length} />
+          <Stat label="Chats" value={allChats.length} />
         </div>
 
         {/* SEARCH */}
@@ -206,19 +263,24 @@ export default function Admin() {
         {/* TABS */}
         <div style={s.tabs}>
           <button style={tab === "payments" ? s.tabActive : s.tab} onClick={() => setTab("payments")}>
-            💳 Payments
+            Payments
           </button>
           <button style={tab === "editors" ? s.tabActive : s.tab} onClick={() => setTab("editors")}>
-            🎬 Editors
+            Editors
+          </button>
+          <button style={tab === "chats" ? s.tabActive : s.tab} onClick={() => setTab("chats")}>
+            Chats
           </button>
         </div>
 
         {/* CONTENT */}
         <div style={s.content}>
+
+          {/* PAYMENTS TAB */}
           {tab === "payments" && filteredPayments.map((p) => (
             <div key={p.id} style={s.card}>
-              <div>
-                <b>{p.email || "Unknown"}</b>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <b style={{ fontSize: 14 }}>{p.email || "Unknown"}</b>
                 <div style={s.sub}>Txn: {p.txnId}</div>
               </div>
               <div style={s.actions}>
@@ -228,19 +290,19 @@ export default function Admin() {
                     <button onClick={() => rejectPayment(p)} style={s.red}>Reject</button>
                   </>
                 )}
-                {/* 💬 CHAT WITH CLIENT */}
                 <button onClick={() => openChat(p.uid, p.email || "Client")} style={s.purple}>
-                  💬
+                  Chat
                 </button>
                 <span style={s.badge(p.status)}>{p.status}</span>
               </div>
             </div>
           ))}
 
+          {/* EDITORS TAB */}
           {tab === "editors" && filteredEditors.map((e) => (
             <div key={e.id} style={s.card}>
-              <div>
-                <b>{e.name}</b>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <b style={{ fontSize: 14 }}>{e.name}</b>
                 <div style={s.sub}>{e.skills?.join(", ")}</div>
               </div>
               <div style={s.actions}>
@@ -250,28 +312,54 @@ export default function Admin() {
                 <button onClick={() => toggleActive(e.id, e.active)} style={s.blue}>
                   {e.active ? "Disable" : "Enable"}
                 </button>
-                {/* 💬 CHAT WITH EDITOR */}
                 <button onClick={() => openChat(e.id, e.name || "Editor")} style={s.purple}>
-                  💬
+                  Chat
                 </button>
                 <button onClick={() => deleteEditor(e.id)} style={s.red}>Delete</button>
               </div>
             </div>
           ))}
+
+          {/* ✅ NEW: CHATS TAB */}
+          {tab === "chats" && (
+            allChats.length === 0 ? (
+              <p style={{ color: "#94a3b8", textAlign: "center", marginTop: 30 }}>No chats yet.</p>
+            ) : (
+              allChats.map((c) => (
+                <div key={c.id} style={s.card}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <b style={{ fontSize: 13 }}>{c.id}</b>
+                    <div style={s.sub}>{c.lastMessage || "No messages"}</div>
+                  </div>
+                  <button
+                    onClick={() => router.push("/chat/" + c.id)}
+                    style={s.purple}
+                  >
+                    Open
+                  </button>
+                </div>
+              ))
+            )
+          )}
         </div>
       </div>
 
-      {/* ✅ ADMIN CHAT PANEL (slide-in) */}
+      {/* ✅ FIX 4: CHAT PANEL - responsive width */}
       {chatOpen && (
         <div style={s.chatPanel}>
           <div style={s.chatHeader}>
-            <span style={{ fontWeight: 700 }}>💬 {chatTarget?.name}</span>
-            <button onClick={closeChat} style={s.closeBtn}>✕</button>
+            <span style={{ fontWeight: 700, fontSize: 14 }}>{chatTarget?.name}</span>
+            <button onClick={closeChat} style={s.closeBtn}>X</button>
           </div>
 
           <div style={s.chatMessages}>
+            {messages.length === 0 && (
+              <p style={{ color: "#475569", fontSize: 13, textAlign: "center", marginTop: 20 }}>
+                No messages yet. Say hello!
+              </p>
+            )}
             {messages.map((m) => {
-              const isMe = m.sender === adminUid;
+              const isMe = m.sender === adminUidRef.current;
               return (
                 <div
                   key={m.id}
@@ -314,8 +402,11 @@ function Stat({ label, value }) {
 }
 
 const css = `
-  body { margin:0; font-family:sans-serif; }
+  body { margin: 0; font-family: sans-serif; }
   @keyframes spin { to { transform: rotate(360deg); } }
+  @media (max-width: 480px) {
+    .chat-panel { width: 100% !important; left: 0 !important; right: 0 !important; border-radius: 16px 16px 0 0 !important; }
+  }
 `;
 
 const s = {
@@ -323,13 +414,14 @@ const s = {
     minHeight: "100vh",
     background: "linear-gradient(135deg,#020617,#0f172a,#1e1b4b)",
     color: "white",
-    paddingBottom: 40,
+    paddingBottom: 80,
   },
   loaderPage: {
     height: "100vh",
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
+    background: "#020617",
   },
   loader: {
     width: 40,
@@ -339,27 +431,73 @@ const s = {
     borderRadius: "50%",
     animation: "spin 1s linear infinite",
   },
+
+  // LOGOUT MODAL
+  overlay: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(0,0,0,0.7)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 300,
+  },
+  modal: {
+    background: "#1e293b",
+    borderRadius: 16,
+    padding: 24,
+    width: 280,
+    textAlign: "center",
+    border: "1px solid rgba(255,255,255,0.1)",
+  },
+  modalCancel: {
+    flex: 1,
+    padding: "10px 16px",
+    background: "#334155",
+    border: "none",
+    color: "white",
+    borderRadius: 10,
+    cursor: "pointer",
+    fontWeight: 600,
+  },
+  modalConfirm: {
+    flex: 1,
+    padding: "10px 16px",
+    background: "#ef4444",
+    border: "none",
+    color: "white",
+    borderRadius: 10,
+    cursor: "pointer",
+    fontWeight: 600,
+  },
+
   header: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
     padding: "14px 16px",
     borderBottom: "1px solid rgba(255,255,255,0.08)",
+    flexWrap: "wrap",
+    gap: 8,
   },
   headerRight: { display: "flex", gap: 8, flexWrap: "wrap" },
   logo: { fontWeight: 800, fontSize: 16 },
-  homeBtn: { background: "#334155", color: "white", padding: "7px 12px", border: "none", borderRadius: 8, cursor: "pointer" },
-  toggleBtn: { background: "#7c3aed", color: "white", padding: "7px 12px", border: "none", borderRadius: 8, cursor: "pointer" },
-  logout: { background: "#ef4444", color: "white", padding: "7px 12px", border: "none", borderRadius: 8, cursor: "pointer" },
-  stats: { display: "flex", gap: 10, padding: 16 },
-  statCard: { flex: 1, background: "#1e293b", padding: 14, borderRadius: 10 },
-  statValue: { fontSize: 22, fontWeight: 700 },
-  statLabel: { fontSize: 12, color: "#94a3b8" },
+  homeBtn: { background: "#334155", color: "white", padding: "7px 12px", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13 },
+  toggleBtn: { background: "#7c3aed", color: "white", padding: "7px 12px", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13 },
+  logout: { background: "#ef4444", color: "white", padding: "7px 12px", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13 },
+
+  stats: { display: "flex", gap: 8, padding: 16, flexWrap: "wrap" },
+  statCard: { flex: 1, minWidth: 70, background: "#1e293b", padding: 12, borderRadius: 10 },
+  statValue: { fontSize: 20, fontWeight: 700 },
+  statLabel: { fontSize: 11, color: "#94a3b8" },
+
   searchWrap: { padding: "0 16px 10px" },
   search: { width: "100%", padding: 10, borderRadius: 8, border: "none", background: "#1e293b", color: "white", boxSizing: "border-box", outline: "none" },
-  tabs: { display: "flex", gap: 10, padding: "0 16px 16px" },
-  tab: { flex: 1, padding: 10, background: "#1e293b", border: "none", color: "white", borderRadius: 8, cursor: "pointer" },
-  tabActive: { flex: 1, padding: 10, background: "#7c3aed", border: "none", color: "white", borderRadius: 8, cursor: "pointer" },
+
+  tabs: { display: "flex", gap: 8, padding: "0 16px 16px" },
+  tab: { flex: 1, padding: 10, background: "#1e293b", border: "none", color: "white", borderRadius: 8, cursor: "pointer", fontSize: 13 },
+  tabActive: { flex: 1, padding: 10, background: "#7c3aed", border: "none", color: "white", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 700 },
+
   content: { padding: "0 16px" },
   card: {
     display: "flex",
@@ -372,26 +510,26 @@ const s = {
     flexWrap: "wrap",
     gap: 8,
   },
-  sub: { fontSize: 12, color: "#94a3b8", marginTop: 4 },
+  sub: { fontSize: 12, color: "#94a3b8", marginTop: 3 },
   actions: { display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" },
-  green: { background: "#10b981", color: "white", padding: "6px 10px", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13 },
-  red: { background: "#ef4444", color: "white", padding: "6px 10px", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13 },
-  blue: { background: "#3b82f6", color: "white", padding: "6px 10px", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13 },
-  purple: { background: "#7c3aed", color: "white", padding: "6px 10px", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13 },
+  green: { background: "#10b981", color: "white", padding: "6px 10px", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 12 },
+  red: { background: "#ef4444", color: "white", padding: "6px 10px", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 12 },
+  blue: { background: "#3b82f6", color: "white", padding: "6px 10px", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 12 },
+  purple: { background: "#7c3aed", color: "white", padding: "6px 10px", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 12 },
   badge: (status) => ({
     padding: "4px 8px",
     borderRadius: 6,
-    fontSize: 12,
-    fontWeight: 600,
+    fontSize: 11,
+    fontWeight: 700,
     background: status === "approved" ? "#10b981" : status === "rejected" ? "#ef4444" : "#f59e0b",
   }),
 
-  // CHAT PANEL
+  // ✅ FIX 4: Chat panel responsive
   chatPanel: {
     position: "fixed",
     bottom: 0,
     right: 0,
-    width: 320,
+    width: "min(320px, 100vw)",
     height: 420,
     background: "#0f172a",
     border: "1px solid rgba(255,255,255,0.1)",
@@ -410,11 +548,13 @@ const s = {
     color: "white",
   },
   closeBtn: {
-    background: "none",
+    background: "#334155",
     border: "none",
-    color: "#94a3b8",
-    fontSize: 18,
+    color: "white",
+    fontSize: 13,
     cursor: "pointer",
+    padding: "4px 10px",
+    borderRadius: 6,
   },
   chatMessages: {
     flex: 1,
