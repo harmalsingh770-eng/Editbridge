@@ -2,60 +2,114 @@
 
 import { useEffect, useState } from "react";
 import { db, auth } from "../lib/firebase";
-import { collection, getDocs, doc, setDoc } from "firebase/firestore";
+import {
+  collection,
+  getDocs,
+  doc,
+  setDoc,
+  getDoc
+} from "firebase/firestore";
 import { useRouter } from "next/router";
 
 export default function Client() {
   const [editors, setEditors] = useState([]);
   const router = useRouter();
 
+  // 🔄 LOAD EDITORS
   useEffect(() => {
     const fetch = async () => {
       const snap = await getDocs(collection(db, "editors"));
-      setEditors(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+
+      setEditors(
+        snap.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        }))
+      );
     };
+
     fetch();
   }, []);
 
+  // 💬 START CHAT (SAFE)
   const startChat = async (editorId) => {
     const user = auth.currentUser;
-    if (!user) return router.push("/login");
+    if (!user) return router.push("/login?type=client");
 
-    const chatId = `${user.uid}_${editorId}`;
+    // ✅ UNIQUE + SAFE CHAT ID
+    const chatId = [user.uid, editorId].sort().join("_");
 
-    await setDoc(doc(db, "chats", chatId), {
-      clientId: user.uid,
-      editorId,
-      unlocked: false,
-      createdAt: new Date()
-    });
+    const ref = doc(db, "chats", chatId);
+    const snap = await getDoc(ref);
+
+    // ✅ CREATE ONLY IF NOT EXISTS
+    if (!snap.exists()) {
+      await setDoc(ref, {
+        clientId: user.uid,
+        editorId,
+        unlocked: false,
+        createdAt: new Date()
+      });
+    }
 
     router.push(`/chat/${chatId}`);
   };
 
   return (
     <div style={s.page}>
-      <h2>Editors</h2>
+      <h1 style={s.title}>🎬 Find Your Editor</h1>
 
-      {editors.map(e => (
+      {editors.map((e) => (
         <div key={e.id} style={s.card}>
-          <h3>{e.name}</h3>
-          <p>{e.skills?.join(", ")}</p>
-          <p>₹{e.price}</p>
+          
+          {/* HEADER */}
+          <div style={s.top}>
+            <h3>{e.name || "Editor"}</h3>
 
-          <button onClick={() => window.open(e.portfolioLink)} style={s.port}>
-            Portfolio 🎬
-          </button>
+            <span
+              style={{
+                ...s.status,
+                background: e.active ? "#22c55e" : "#ef4444"
+              }}
+            >
+              {e.active ? "Online" : "Offline"}
+            </span>
+          </div>
 
-          <button onClick={() => startChat(e.id)} style={s.pay}>
-            Pay to Chat 💰
-          </button>
+          {/* BIO */}
+          <p style={s.bio}>{e.bio || "No bio added"}</p>
+
+          {/* SKILLS */}
+          <p style={s.skills}>
+            {e.skills?.join(", ") || "No skills"}
+          </p>
+
+          {/* PRICE */}
+          <p style={s.price}>₹{e.price || 0}</p>
+
+          {/* BUTTONS */}
+          <div style={s.btnRow}>
+            <button
+              onClick={() => window.open(e.portfolioLink)}
+              style={s.port}
+            >
+              Portfolio 🎬
+            </button>
+
+            <button
+              onClick={() => startChat(e.id)}
+              style={s.pay}
+            >
+              Pay to Chat 💰
+            </button>
+          </div>
         </div>
       ))}
     </div>
   );
 }
 
+// 🎨 STYLES
 const s = {
   page: {
     minHeight: "100vh",
@@ -63,12 +117,72 @@ const s = {
     background: "linear-gradient(135deg,#020617,#0f172a,#4c1d95)",
     color: "white"
   },
-  card: {
-    padding: 15,
-    marginBottom: 10,
-    background: "rgba(255,255,255,0.05)",
-    borderRadius: 10
+
+  title: {
+    marginBottom: 20
   },
-  port: { marginTop: 5, padding: 8, background: "#6366f1", color: "white" },
-  pay: { marginTop: 5, padding: 8, background: "#22c55e", color: "white" }
+
+  card: {
+    padding: 18,
+    marginBottom: 15,
+    background: "rgba(30,27,75,0.6)",
+    borderRadius: 15,
+    border: "1px solid rgba(255,255,255,0.1)"
+  },
+
+  top: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center"
+  },
+
+  status: {
+    padding: "4px 10px",
+    borderRadius: 20,
+    fontSize: 12,
+    color: "white"
+  },
+
+  bio: {
+    marginTop: 8,
+    color: "#cbd5f5",
+    fontSize: 14
+  },
+
+  skills: {
+    marginTop: 5,
+    fontSize: 13,
+    color: "#a5b4fc"
+  },
+
+  price: {
+    marginTop: 5,
+    fontWeight: "bold"
+  },
+
+  btnRow: {
+    display: "flex",
+    gap: 10,
+    marginTop: 10
+  },
+
+  port: {
+    flex: 1,
+    padding: 10,
+    background: "#6366f1",
+    border: "none",
+    borderRadius: 8,
+    color: "white",
+    cursor: "pointer"
+  },
+
+  pay: {
+    flex: 1,
+    padding: 10,
+    background: "#22c55e",
+    border: "none",
+    borderRadius: 8,
+    color: "white",
+    cursor: "pointer"
+  }
 };
