@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { db, auth } from "../lib/firebase";
 import {
   collection,
-  getDocs,
+  onSnapshot,
   query,
   where,
   doc,
@@ -22,42 +22,43 @@ export default function Client() {
   const router = useRouter();
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (u) => {
+    let unsubEditors = null;
+    let unsubAccess = null;
+
+    const unsubAuth = onAuthStateChanged(auth, (u) => {
       if (!u) return router.replace("/login");
 
-      try {
-        // ✅ LOAD ALL EDITORS
-        const editorSnap = await getDocs(collection(db, "editors"));
-        const editorList = editorSnap.docs.map(d => ({
+      // ✅ REALTIME EDITORS
+      unsubEditors = onSnapshot(collection(db, "editors"), (snap) => {
+        const list = snap.docs.map(d => ({
           id: d.id,
           ...d.data()
         }));
-        setEditors(editorList);
+        setEditors(list);
+        setLoading(false);
+      });
 
-        // ✅ LOAD USER ACCESS (pending / approved)
-        const accessQuery = query(
-          collection(db, "clientAccess"),
-          where("uid", "==", u.uid)
-        );
+      // ✅ REALTIME ACCESS (AUTO UPDATE AFTER ADMIN APPROVES)
+      const q = query(
+        collection(db, "clientAccess"),
+        where("uid", "==", u.uid)
+      );
 
-        const accessSnap = await getDocs(accessQuery);
-
+      unsubAccess = onSnapshot(q, (snap) => {
         const map = {};
-        accessSnap.docs.forEach(d => {
+        snap.docs.forEach(d => {
           const data = d.data();
-          map[data.editorId] = data.status; // "pending" | "approved"
+          map[data.editorId] = data.status;
         });
-
         setAccessMap(map);
-
-      } catch (err) {
-        console.error(err);
-      }
-
-      setLoading(false);
+      });
     });
 
-    return () => unsub();
+    return () => {
+      unsubAuth();
+      if (unsubEditors) unsubEditors();
+      if (unsubAccess) unsubAccess();
+    };
   }, []);
 
   const handleAction = async (editorId) => {
@@ -66,17 +67,15 @@ export default function Client() {
 
     const status = accessMap[editorId];
 
-    // 🔒 NOT PAID
     if (!status) {
       return router.push(`/pay/${editorId}`);
     }
 
-    // ⏳ WAITING
     if (status === "pending") {
-      return alert("⏳ Payment pending approval");
+      return alert("⏳ Waiting for admin approval...");
     }
 
-    // ✅ APPROVED → OPEN CHAT
+    // ✅ OPEN CHAT
     const ids = [user.uid, editorId].sort();
     const chatId = ids.join("_");
 
@@ -100,47 +99,65 @@ export default function Client() {
     <div style={s.page}>
       {/* HEADER */}
       <div style={s.header}>
-        <h1 style={s.title}>🔥 Find an Editor</h1>
+        <h1 style={s.title}>🔥 Find Your Editor</h1>
         <button onClick={() => signOut(auth)} style={s.logout}>
           Logout
         </button>
       </div>
 
-      {/* EDITOR LIST */}
-      {editors.map((e) => {
-        const status = accessMap[e.id];
+      {/* LIST */}
+      <div style={s.grid}>
+        {editors.map((e) => {
+          const status = accessMap[e.id];
 
-        let btnText = "🔒 Pay ₹10";
-        let btnStyle = s.lockBtn;
+          let btnText = "🔒 Pay ₹10";
+          let btnStyle = s.lockBtn;
+          let badge = null;
 
-        if (status === "pending") {
-          btnText = "⏳ Waiting Approval";
-          btnStyle = s.pendingBtn;
-        }
+          if (status === "pending") {
+            btnText = "⏳ Pending";
+            btnStyle = s.pendingBtn;
+            badge = <span style={s.badgePending}>Pending</span>;
+          }
 
-        if (status === "approved") {
-          btnText = "💬 Chat Now";
-          btnStyle = s.chatBtn;
-        }
+          if (status === "approved") {
+            btnText = "💬 Chat Now";
+            btnStyle = s.chatBtn;
+            badge = <span style={s.badgeApproved}>Unlocked</span>;
+          }
 
-        return (
-          <div key={e.id} style={s.card}>
-            <div>
-              <h2 style={s.name}>{e.name}</h2>
-              <p style={s.skills}>{e.skills?.join(", ")}</p>
-              <p style={s.price}>₹{e.price}</p>
+          return (
+            <div key={e.id} style={s.card}>
+              <div style={s.top}>
+                <div style={s.avatar}>
+                  {e.name?.[0]?.toUpperCase() || "E"}
+                </div>
+
+                <div style={{ flex: 1 }}>
+                  <div style={s.name}>{e.name}</div>
+                  <div style={s.skills}>
+                    {e.skills?.join(", ") || "No skills"}
+                  </div>
+                </div>
+
+                {badge}
+              </div>
+
+              <div style={s.bottom}>
+                <div style={s.price}>₹{e.price}</div>
+
+                <button
+                  onClick={() => handleAction(e.id)}
+                  style={btnStyle}
+                  disabled={status === "pending"}
+                >
+                  {btnText}
+                </button>
+              </div>
             </div>
-
-            <button
-              onClick={() => handleAction(e.id)}
-              style={btnStyle}
-              disabled={status === "pending"}
-            >
-              {btnText}
-            </button>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -159,35 +176,71 @@ const s = {
     marginBottom: 20
   },
 
-  title: { fontSize: 24, fontWeight: 800 },
+  title: {
+    fontSize: 24,
+    fontWeight: 800
+  },
 
   logout: {
     background: "#ef4444",
     border: "none",
     padding: "8px 16px",
-    borderRadius: 8,
-    color: "white"
+    borderRadius: 10,
+    color: "white",
+    cursor: "pointer"
+  },
+
+  grid: {
+    display: "grid",
+    gap: 16
   },
 
   card: {
+    padding: 18,
+    borderRadius: 16,
     background: "rgba(30,41,59,0.6)",
     backdropFilter: "blur(20px)",
-    padding: 20,
-    borderRadius: 16,
-    marginBottom: 15,
+    border: "1px solid rgba(255,255,255,0.08)",
+    display: "flex",
+    flexDirection: "column",
+    gap: 14
+  },
+
+  top: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12
+  },
+
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: "50%",
+    background: "linear-gradient(135deg,#7c3aed,#6366f1)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontWeight: 700
+  },
+
+  name: { fontWeight: 700 },
+  skills: { fontSize: 12, color: "#94a3b8" },
+
+  bottom: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center"
   },
 
-  name: { fontSize: 18, fontWeight: 700 },
-  skills: { color: "#94a3b8", fontSize: 13 },
-  price: { color: "#a78bfa", fontWeight: 600 },
+  price: {
+    color: "#a78bfa",
+    fontWeight: 600
+  },
 
   chatBtn: {
     background: "#22c55e",
-    padding: "10px 16px",
     border: "none",
+    padding: "8px 14px",
     borderRadius: 10,
     color: "white",
     fontWeight: 600
@@ -195,8 +248,8 @@ const s = {
 
   lockBtn: {
     background: "#7c3aed",
-    padding: "10px 16px",
     border: "none",
+    padding: "8px 14px",
     borderRadius: 10,
     color: "white",
     fontWeight: 600
@@ -204,20 +257,32 @@ const s = {
 
   pendingBtn: {
     background: "#f59e0b",
-    padding: "10px 16px",
     border: "none",
+    padding: "8px 14px",
     borderRadius: 10,
     color: "white",
-    fontWeight: 600,
-    cursor: "not-allowed"
+    fontWeight: 600
+  },
+
+  badgeApproved: {
+    fontSize: 10,
+    background: "#22c55e",
+    padding: "4px 8px",
+    borderRadius: 6
+  },
+
+  badgePending: {
+    fontSize: 10,
+    background: "#f59e0b",
+    padding: "4px 8px",
+    borderRadius: 6
   },
 
   loaderPage: {
     height: "100vh",
     display: "flex",
     justifyContent: "center",
-    alignItems: "center",
-    background: "#020617"
+    alignItems: "center"
   },
 
   spinner: {
