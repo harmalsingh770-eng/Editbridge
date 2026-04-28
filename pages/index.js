@@ -1,7 +1,8 @@
+"use client";
+
 import { useEffect, useState } from "react";
-import { auth, db } from "../lib/firebase";
+import { auth } from "../lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
 import { useRouter } from "next/router";
 
 export default function Home() {
@@ -10,31 +11,9 @@ export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (u) => {
+    const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
-
-      if (u) {
-        try {
-          const snap = await getDoc(doc(db, "users", u.uid));
-
-          if (snap.exists()) {
-            const role = snap.data().role;
-
-            // ✅ Auto redirect
-            if (role === "editor") {
-              router.replace("/editor");
-              return;
-            } else {
-              router.replace("/client");
-              return;
-            }
-          }
-        } catch (err) {
-          console.log(err);
-        }
-      }
-
-      setLoading(false);
+      setLoading(false); // ✅ no redirect anymore
     });
 
     return () => unsub();
@@ -49,14 +28,13 @@ export default function Home() {
     );
   }
 
-  // 🎯 Dashboard logic
-  const goDashboard = async () => {
-    if (!user) return router.push("/login");
-
-    const snap = await getDoc(doc(db, "users", user.uid));
-    const role = snap.data()?.role;
-
-    router.push(role === "editor" ? "/editor" : "/client");
+  // 🎯 Go to dashboard manually
+  const goDashboard = () => {
+    if (!user) {
+      router.push("/login");
+    } else {
+      router.push("/client"); // simple: all users go here
+    }
   };
 
   return (
@@ -68,7 +46,7 @@ export default function Home() {
         {!user ? (
           <div style={s.navBtns}>
             <button
-              onClick={() => router.push("/login?type=client")}
+              onClick={() => router.push("/login")}
               style={s.btn}
             >
               Client
@@ -79,13 +57,6 @@ export default function Home() {
               style={s.btnPrimary}
             >
               Editor
-            </button>
-
-            <button
-              onClick={() => router.push("/admin-login")}
-              style={s.adminBtn}
-            >
-              Admin
             </button>
           </div>
         ) : (
@@ -102,7 +73,7 @@ export default function Home() {
         </h1>
 
         <p style={s.subtitle}>
-          Chat instantly, hire fast, and scale your content production.
+          Chat instantly, hire fast, and scale your content.
         </p>
 
         <button onClick={goDashboard} style={s.cta}>
@@ -168,14 +139,6 @@ const s = {
     padding: "8px 12px",
     borderRadius: 8,
     fontWeight: 600
-  },
-
-  adminBtn: {
-    background: "#ef4444",
-    border: "none",
-    color: "white",
-    padding: "8px 12px",
-    borderRadius: 8
   },
 
   hero: {
