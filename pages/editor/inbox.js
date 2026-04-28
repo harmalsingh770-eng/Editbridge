@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { auth, db } from "../../lib/firebase";
 import { collection, query, where, onSnapshot, doc, getDoc } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
@@ -7,47 +7,63 @@ import { useRouter } from "next/router";
 export default function Inbox() {
   const [chats, setChats] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState(null);
   const router = useRouter();
 
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (u) => {
-      if (!u) return router.replace("/login?type=editor");
-      setUser(u);
+  // ✅ FIX 1: Store unsub refs so they can be properly cleaned up
+  const unsubAuthRef = useRef(null);
+  const unsubChatsRef = useRef(null);
 
-      // ✅ FIX: query using users array-contains instead of editorId field
+  useEffect(() => {
+    unsubAuthRef.current = onAuthStateChanged(auth, (u) => {
+      if (!u) {
+        router.replace("/login?type=editor");
+        return;
+      }
+
+      // ✅ FIX 2: onSnapshot is NOT inside async — so unsub is returned correctly
       const q = query(
         collection(db, "chats"),
         where("users", "array-contains", u.uid)
       );
 
-      return onSnapshot(q, async (snap) => {
+      unsubChatsRef.current = onSnapshot(q, async (snap) => {
+        // ✅ FIX 3: Fetch other user names inside the snapshot callback (not blocking)
         const chatList = await Promise.all(
           snap.docs.map(async (d) => {
             const data = d.data();
-            // Get the client's name from the other user in the chat
             const otherUid = data.users?.find((id) => id !== u.uid);
             let clientName = "Client";
+
             if (otherUid) {
               try {
+                // Check users collection first (clients)
                 const userSnap = await getDoc(doc(db, "users", otherUid));
-                if (userSnap.exists()) clientName = userSnap.data().email || "Client";
+                if (userSnap.exists()) {
+                  clientName = userSnap.data().email || "Client";
+                } else {
+                  // Could be admin — check editors too
+                  const edSnap = await getDoc(doc(db, "editors", otherUid));
+                  if (edSnap.exists()) clientName = edSnap.data().name || "Editor";
+                  else clientName = "Admin";
+                }
               } catch (_) {}
             }
+
             return { id: d.id, ...data, clientName };
           })
         );
+
         setChats(chatList);
         setLoading(false);
       });
     });
 
-    return () => unsub();
+    // ✅ FIX 1: Cleanup both listeners on unmount
+    return () => {
+      if (unsubAuthRef.current) unsubAuthRef.current();
+      if (unsubChatsRef.current) unsubChatsRef.current();
+    };
   }, []);
-
-  const handleBack = () => {
-    router.push("/editor");
-  };
 
   if (loading) {
     return (
@@ -64,15 +80,19 @@ export default function Inbox() {
 
       {/* HEADER */}
       <div style={s.header}>
-        <button onClick={handleBack} style={s.backBtn}>← Back</button>
-        <h2 style={s.title}>📩 Inbox</h2>
+        <button onClick={() => router.push("/editor")} style={s.backBtn}>
+          Back
+        </button>
+        <h2 style={s.title}>Inbox</h2>
         <div style={{ width: 60 }} />
       </div>
 
       {chats.length === 0 ? (
         <div style={s.empty}>
-          <p>No chats yet.</p>
-          <p style={{ color: "#94a3b8", fontSize: 13 }}>Clients will appear here once they message you.</p>
+          <p style={{ fontWeight: 600 }}>No chats yet.</p>
+          <p style={{ color: "#94a3b8", fontSize: 13 }}>
+            Clients will appear here once they message you.
+          </p>
         </div>
       ) : (
         <div style={s.list}>
@@ -80,14 +100,18 @@ export default function Inbox() {
             <div
               key={c.id}
               style={s.card}
-              onClick={() => router.push(`/chat/${c.id}`)}
+              onClick={() => router.push("/chat/" + c.id)}
             >
-              <div style={s.avatar}>{c.clientName?.[0]?.toUpperCase() || "C"}</div>
+              <div style={s.avatar}>
+                {c.clientName?.[0]?.toUpperCase() || "C"}
+              </div>
               <div style={s.info}>
                 <div style={s.name}>{c.clientName}</div>
-                <div style={s.lastMsg}>{c.lastMessage || "No messages yet"}</div>
+                <div style={s.lastMsg}>
+                  {c.lastMessage || "No messages yet"}
+                </div>
               </div>
-              <div style={s.arrow}>›</div>
+              <div style={s.arrow}>{">"}</div>
             </div>
           ))}
         </div>
@@ -131,11 +155,12 @@ const s = {
   },
   backBtn: {
     background: "none",
-    border: "none",
+    border: "1px solid rgba(255,255,255,0.15)",
     color: "white",
-    fontSize: 16,
+    fontSize: 14,
     cursor: "pointer",
-    padding: "6px 10px",
+    padding: "6px 14px",
+    borderRadius: 8,
   },
   title: { margin: 0, fontSize: 18, fontWeight: 700 },
   list: { padding: 16, display: "flex", flexDirection: "column", gap: 12 },
@@ -147,7 +172,6 @@ const s = {
     padding: "14px 16px",
     borderRadius: 14,
     cursor: "pointer",
-    transition: "background 0.2s",
   },
   avatar: {
     width: 44,
@@ -161,10 +185,16 @@ const s = {
     fontSize: 18,
     flexShrink: 0,
   },
-  info: { flex: 1 },
+  info: { flex: 1, minWidth: 0 },
   name: { fontWeight: 600, fontSize: 15, marginBottom: 4 },
-  lastMsg: { color: "#94a3b8", fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
-  arrow: { color: "#94a3b8", fontSize: 22 },
+  lastMsg: {
+    color: "#94a3b8",
+    fontSize: 13,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
+  arrow: { color: "#94a3b8", fontSize: 20 },
   empty: {
     textAlign: "center",
     marginTop: 80,
