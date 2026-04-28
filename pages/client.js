@@ -34,36 +34,41 @@ export default function Client() {
     if (!user) return router.push("/login");
 
     const chatId = [user.uid, editorId].sort().join("_");
-
     router.push(`/chat/${chatId}`);
   };
 
   return (
     <div style={s.page}>
+      
       <div style={s.header}>
-        <h1>🎬 EditBridge</h1>
-        <button onClick={logout}>Logout</button>
+        <h1 style={s.logo}>🎬 EditBridge</h1>
+        <button onClick={logout} style={s.logout}>Logout</button>
       </div>
 
       <div style={s.grid}>
         {editors.map(e => (
           <div key={e.id} style={s.card}>
+            
             <h2>{e.name}</h2>
-            <p>{e.bio}</p>
-            <p>{e.skills?.join(", ")}</p>
-            <p>₹{e.price}</p>
+            <p style={s.bio}>{e.bio}</p>
 
+            <p style={s.skills}>{e.skills?.join(", ")}</p>
+            <p style={s.price}>₹{e.price}</p>
+
+            {/* Portfolio */}
             {e.portfolio?.map((link, i) => (
-              <a key={i} href={link} target="_blank">
-                Portfolio {i + 1}
+              <a key={i} href={link} target="_blank" style={s.link}>
+                🔗 Portfolio {i + 1}
               </a>
             ))}
 
-            <button onClick={() => openChat(e.id)}>
-              Chat
+            <button onClick={() => openChat(e.id)} style={s.chatBtn}>
+              💬 Chat
             </button>
 
+            {/* Reviews */}
             <Reviews editorId={e.id} />
+
           </div>
         ))}
       </div>
@@ -72,8 +77,60 @@ export default function Client() {
 }
 
 const s = {
-  page: { padding: 20, color: "white", background: "#020617" },
-  header: { display: "flex", justifyContent: "space-between" },
-  grid: { display: "grid", gap: 20, marginTop: 20 },
-  card: { padding: 20, background: "#1e293b", borderRadius: 12 }
+  page: {
+    minHeight: "100vh",
+    padding: 20,
+    background: "linear-gradient(135deg,#020617,#0f172a,#4c1d95)",
+    color: "white"
+  },
+
+  header: {
+    display: "flex",
+    justifyContent: "space-between",
+    marginBottom: 20
+  },
+
+  logo: { fontSize: 22, fontWeight: "bold" },
+
+  logout: {
+    background: "#ef4444",
+    border: "none",
+    padding: "8px 14px",
+    borderRadius: 8,
+    color: "white"
+  },
+
+  grid: {
+    display: "grid",
+    gap: 20,
+    gridTemplateColumns: "repeat(auto-fit,minmax(250px,1fr))"
+  },
+
+  card: {
+    padding: 20,
+    borderRadius: 16,
+    background: "rgba(30,27,75,0.6)",
+    backdropFilter: "blur(20px)"
+  },
+
+  bio: { opacity: 0.8 },
+
+  skills: { fontSize: 13, opacity: 0.7 },
+
+  price: { fontWeight: "bold", marginTop: 6 },
+
+  link: {
+    display: "block",
+    marginTop: 6,
+    color: "#60a5fa"
+  },
+
+  chatBtn: {
+    marginTop: 10,
+    padding: 10,
+    background: "#6366f1",
+    border: "none",
+    borderRadius: 10,
+    color: "white"
+  }
 };
