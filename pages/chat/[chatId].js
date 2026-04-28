@@ -3,8 +3,8 @@
 import { useEffect, useState, useRef } from "react";
 import { db, auth } from "../../lib/firebase";
 import {
-  collection, addDoc, query, orderBy,
-  onSnapshot, serverTimestamp, doc, getDoc
+  collection, addDoc, query, orderBy, where,
+  onSnapshot, serverTimestamp, doc, getDoc, updateDoc
 } from "firebase/firestore";
 import { useRouter } from "next/router";
 
@@ -16,36 +16,30 @@ export default function Chat() {
   const [text, setText] = useState("");
   const [isPaid, setIsPaid] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [deal, setDeal] = useState(null);
 
   const bottomRef = useRef(null);
   const user = auth.currentUser;
 
-  // 🔐 PAYWALL (FIXED FOR EDITOR)
+  // 🔐 PAYWALL
   useEffect(() => {
     if (!chatId || !user) return;
 
-    const [u1, u2] = chatId.split("_");
+    const [clientId, editorId] = chatId.split("_");
 
-    // ✅ editor always allowed
-    if (user.uid === u2) {
+    if (user.uid === editorId) {
       setIsPaid(true);
       setLoading(false);
       return;
     }
 
-    const ref = doc(db, "clientAccess", chatId);
-
-    getDoc(ref).then(snap => {
-      if (snap.exists() && snap.data().status === "approved") {
-        setIsPaid(true);
-      } else {
-        setIsPaid(false);
-      }
+    getDoc(doc(db, "clientAccess", chatId)).then(snap => {
+      setIsPaid(snap.exists() && snap.data().status === "approved");
       setLoading(false);
     });
-  }, [chatId, user]);
+  }, [chatId]);
 
-  // 💬 CHAT
+  // 💬 MESSAGES
   useEffect(() => {
     if (!chatId) return;
 
@@ -57,6 +51,21 @@ export default function Chat() {
     return onSnapshot(q, snap => {
       setMessages(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+    });
+  }, [chatId]);
+
+  // 💼 DEAL
+  useEffect(() => {
+    if (!chatId) return;
+
+    const q = query(collection(db, "deals"), where("chatId", "==", chatId));
+
+    return onSnapshot(q, snap => {
+      if (!snap.empty) {
+        setDeal({ id: snap.docs[0].id, ...snap.docs[0].data() });
+      } else {
+        setDeal(null);
+      }
     });
   }, [chatId]);
 
@@ -72,31 +81,53 @@ export default function Chat() {
     setText("");
   };
 
-  // ⏳ LOADING STATE
-  if (loading) {
-    return (
-      <div style={s.loaderPage}>
-        <div style={s.spinner}></div>
-      </div>
-    );
-  }
+  const sendDeal = async () => {
+    const price = prompt("Enter price");
+    if (!price) return;
 
-  // 🔒 LOCK SCREEN
+    await addDoc(collection(db, "deals"), {
+      chatId,
+      clientId: user.uid,
+      price: Number(price),
+      status: "pending",
+      createdAt: serverTimestamp()
+    });
+  };
+
+  const acceptDeal = async () => {
+    if (!confirm("Accept?")) return;
+    if (!confirm("Final confirm?")) return;
+
+    await updateDoc(doc(db, "deals", deal.id), {
+      status: "accepted"
+    });
+  };
+
+  const rejectDeal = async () => {
+    await updateDoc(doc(db, "deals", deal.id), {
+      status: "rejected"
+    });
+  };
+
+  const counterDeal = async () => {
+    const price = prompt("Counter price");
+    if (!price) return;
+
+    await updateDoc(doc(db, "deals", deal.id), {
+      price: Number(price),
+      status: "counter"
+    });
+  };
+
+  if (loading) return <div style={s.loader}>Loading...</div>;
+
   if (!isPaid) {
     return (
       <div style={s.lock}>
-        <div style={s.lockCard}>
-          <h2 style={{ marginBottom: 10 }}>🔒 Chat Locked</h2>
-          <p style={{ color: "#94a3b8", fontSize: 14 }}>
-            Pay ₹10 to start chatting with this editor
-          </p>
-          <button
-            onClick={() => router.push(`/pay/${chatId.split("_")[1]}`)}
-            style={s.unlockBtn}
-          >
-            Unlock Chat
-          </button>
-        </div>
+        <h2>🔒 Chat Locked</h2>
+        <button onClick={() => router.push(`/pay/${chatId.split("_")[1]}`)}>
+          Unlock Chat
+        </button>
       </div>
     );
   }
@@ -104,174 +135,54 @@ export default function Chat() {
   return (
     <div style={s.page}>
 
-      {/* HEADER */}
       <div style={s.header}>
-        <button onClick={() => router.back()} style={s.backBtn}>←</button>
-        <span style={s.title}>Chat</span>
+        <button onClick={() => router.back()}>←</button>
+        <h3>Chat</h3>
       </div>
 
-      {/* MESSAGES */}
+      {deal && (
+        <div style={s.dealBox}>
+          <b>₹{deal.price}</b> ({deal.status})
+          {deal.status === "pending" && (
+            <>
+              <button onClick={acceptDeal}>Accept</button>
+              <button onClick={rejectDeal}>Reject</button>
+              <button onClick={counterDeal}>Counter</button>
+            </>
+          )}
+        </div>
+      )}
+
+      <button onClick={sendDeal} style={s.dealBtn}>Send Deal</button>
+
       <div style={s.chat}>
-        {messages.length === 0 && (
-          <p style={s.empty}>Start the conversation 👋</p>
-        )}
-
-        {messages.map(m => {
-          const me = m.sender === user.uid;
-
-          return (
-            <div key={m.id} style={{
-              ...s.msg,
-              alignSelf: me ? "flex-end" : "flex-start",
-              background: me
-                ? "linear-gradient(135deg,#7c3aed,#6366f1)"
-                : "#1e293b"
-            }}>
-              {m.text}
-            </div>
-          );
-        })}
-
+        {messages.map(m => (
+          <div key={m.id} style={{
+            ...s.msg,
+            alignSelf: m.sender === user.uid ? "flex-end" : "flex-start"
+          }}>
+            {m.text}
+          </div>
+        ))}
         <div ref={bottomRef}/>
       </div>
 
-      {/* INPUT */}
       <div style={s.inputRow}>
-        <input
-          value={text}
-          onChange={e => setText(e.target.value)}
-          placeholder="Type a message..."
-          style={s.input}
-          onKeyDown={e => e.key === "Enter" && send()}
-        />
-        <button onClick={send} style={s.send}>Send</button>
+        <input value={text} onChange={e => setText(e.target.value)} />
+        <button onClick={send}>Send</button>
       </div>
     </div>
   );
 }
 
 const s = {
-  page: {
-    height: "100vh",
-    display: "flex",
-    flexDirection: "column",
-    background: "linear-gradient(135deg,#020617,#0f172a,#1e1b4b)",
-    color: "white"
-  },
-
-  header: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    padding: "12px 16px",
-    borderBottom: "1px solid rgba(255,255,255,0.08)"
-  },
-
-  backBtn: {
-    background: "#1e293b",
-    border: "none",
-    color: "white",
-    padding: "6px 10px",
-    borderRadius: 8,
-    cursor: "pointer"
-  },
-
-  title: {
-    fontWeight: 700,
-    fontSize: 16
-  },
-
-  chat: {
-    flex: 1,
-    padding: 14,
-    display: "flex",
-    flexDirection: "column",
-    gap: 10,
-    overflowY: "auto"
-  },
-
-  msg: {
-    padding: "10px 14px",
-    borderRadius: 14,
-    maxWidth: "75%",
-    fontSize: 14,
-    boxShadow: "0 4px 20px rgba(0,0,0,0.25)"
-  },
-
-  empty: {
-    textAlign: "center",
-    color: "#64748b",
-    marginTop: 20
-  },
-
-  inputRow: {
-    display: "flex",
-    gap: 8,
-    padding: 12,
-    borderTop: "1px solid rgba(255,255,255,0.08)"
-  },
-
-  input: {
-    flex: 1,
-    padding: "12px 14px",
-    borderRadius: 12,
-    background: "#1e293b",
-    border: "none",
-    color: "white",
-    outline: "none"
-  },
-
-  send: {
-    padding: "12px 16px",
-    background: "linear-gradient(135deg,#7c3aed,#6366f1)",
-    border: "none",
-    color: "white",
-    borderRadius: 12,
-    cursor: "pointer",
-    fontWeight: 600
-  },
-
-  lock: {
-    height: "100vh",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    background: "linear-gradient(135deg,#020617,#0f172a,#1e1b4b)"
-  },
-
-  lockCard: {
-    background: "#1e293b",
-    padding: 30,
-    borderRadius: 16,
-    textAlign: "center",
-    border: "1px solid rgba(255,255,255,0.1)"
-  },
-
-  unlockBtn: {
-    marginTop: 15,
-    padding: "12px 20px",
-    background: "linear-gradient(135deg,#7c3aed,#6366f1)",
-    border: "none",
-    color: "white",
-    borderRadius: 10,
-    cursor: "pointer",
-    fontWeight: 600
-  },
-
-  loaderPage: {
-    height: "100vh",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    background: "#020617"
-  },
-
-  spinner: {
-    width: 40,
-    height: 40,
-    border: "3px solid #334155",
-    borderTop: "3px solid #7c3aed",
-    borderRadius: "50%",
-    animation: "spin 1s linear infinite"
-  }
+  page:{height:"100vh",display:"flex",flexDirection:"column",background:"#020617",color:"white"},
+  header:{display:"flex",gap:10,padding:10,borderBottom:"1px solid #333"},
+  chat:{flex:1,padding:10,display:"flex",flexDirection:"column",gap:8},
+  msg:{padding:10,borderRadius:10,background:"#1e293b",maxWidth:"70%"},
+  inputRow:{display:"flex",padding:10,gap:8},
+  dealBox:{background:"#1e293b",padding:10,margin:10,borderRadius:10},
+  dealBtn:{margin:10,padding:10,background:"#7c3aed",border:"none",color:"white"},
+  lock:{height:"100vh",display:"flex",justifyContent:"center",alignItems:"center",flexDirection:"column"},
+  loader:{height:"100vh",display:"flex",justifyContent:"center",alignItems:"center"}
 };
