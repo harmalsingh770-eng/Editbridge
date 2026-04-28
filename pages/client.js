@@ -1,153 +1,146 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { db, auth } from "../lib/firebase";
+import { db } from "../lib/firebase";
 import {
   collection,
-  onSnapshot,
-  query,
-  where,
-  doc,
-  setDoc,
-  serverTimestamp
+  onSnapshot
 } from "firebase/firestore";
-import { onAuthStateChanged, signOut } from "firebase/auth";
-import { useRouter } from "next/router";
+import Reviews from "../components/Reviews";
 
 export default function Client() {
-  const [user, setUser] = useState(null);
   const [editors, setEditors] = useState([]);
-  const [accessMap, setAccessMap] = useState({});
-  const [loading, setLoading] = useState(true);
 
-  const router = useRouter();
-
+  // 🔥 Fetch editors
   useEffect(() => {
-    let unsubEditors, unsubAccess;
+    const unsub = onSnapshot(collection(db, "editors"), (snap) => {
+      const data = snap.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data()
+      }));
 
-    const unsubAuth = onAuthStateChanged(auth, (u) => {
-      if (!u) return router.replace("/login");
-      setUser(u);
-
-      // 🔥 ONLY ACTIVE EDITORS
-      const qEditors = query(
-        collection(db, "editors"),
-        where("active", "==", true)
-      );
-
-      unsubEditors = onSnapshot(qEditors, (snap) => {
-        setEditors(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-        setLoading(false);
-      });
-
-      const q = query(
-        collection(db, "clientAccess"),
-        where("uid", "==", u.uid)
-      );
-
-      unsubAccess = onSnapshot(q, (snap) => {
-        const map = {};
-        snap.docs.forEach(d => {
-          const data = d.data();
-          if (data.editorId) {
-            map[data.editorId] = data.status;
-          }
-        });
-        setAccessMap(map);
-      });
+      // Only approved editors
+      setEditors(data.filter((e) => e.approved));
     });
 
-    return () => {
-      unsubAuth();
-      unsubEditors && unsubEditors();
-      unsubAccess && unsubAccess();
-    };
+    return () => unsub();
   }, []);
-
-  const handleAction = async (editorId) => {
-    const status = accessMap[editorId];
-
-    if (!status) return router.push(`/pay/${editorId}`);
-    if (status === "pending") return alert("⏳ Pending");
-    if (status === "rejected") return alert("❌ Rejected");
-
-    const chatId = [user.uid, editorId].sort().join("_");
-
-    await setDoc(doc(db, "chats", chatId), {
-      users: [user.uid, editorId],
-      createdAt: serverTimestamp()
-    }, { merge: true });
-
-    router.push(`/chat/${chatId}`);
-  };
-
-  if (loading) return <div>Loading...</div>;
 
   return (
     <div style={s.page}>
+
+      {/* 🔥 HEADER */}
       <div style={s.header}>
-        <h1>🔥 Find Editor</h1>
-        <button onClick={() => signOut(auth)} style={s.logout}>Logout</button>
+        <h1 style={s.logo}>EditBridge</h1>
+        <button style={s.cta}>🚀 Get Started</button>
       </div>
 
-      {editors.map((e) => {
-        const status = accessMap[e.id];
+      {/* 🔥 HERO */}
+      <div style={s.hero}>
+        <h1 style={s.title}>
+          Work with <span style={s.gradient}>Top Editors</span>
+        </h1>
 
-        let text = "🔒 Pay ₹10";
-        let style = s.lock;
+        <p style={s.subtitle}>
+          Chat instantly, hire fast, and scale your content production.
+        </p>
+      </div>
 
-        if (status === "pending") { text = "⏳ Pending"; style = s.pending; }
-        if (status === "approved") { text = "💬 Chat"; style = s.chat; }
-        if (status === "rejected") { text = "❌ Rejected"; style = s.rejected; }
+      {/* 🔥 EDITORS LIST */}
+      <div style={s.grid}>
+        {editors.map((editor) => (
+          <div key={editor.id} style={s.card}>
 
-        return (
-          <div key={e.id} style={s.card}>
-            <div style={{ flex: 1 }}>
-              <h3>{e.name}</h3>
+            <h2>{editor.name}</h2>
 
-              <p style={s.bio}>{e.bio}</p>
+            <p style={s.skills}>
+              {editor.skills?.join(", ")}
+            </p>
 
-              <div style={s.skills}>
-                {e.skills?.join(", ")}
-              </div>
+            <p style={s.price}>₹{editor.price}</p>
 
-              <div style={s.price}>₹{e.price}</div>
+            {/* ⭐ REVIEWS (Top 2) */}
+            <Reviews editorId={editor.id} />
 
-              {e.portfolio?.length > 0 && (
-                <button
-                  style={s.portfolioBtn}
-                  onClick={() => window.open(e.portfolio[0], "_blank")}
-                >
-                  🎬 View Portfolio
-                </button>
-              )}
-            </div>
-
-            <button onClick={() => handleAction(e.id)} style={style}>
-              {text}
-            </button>
           </div>
-        );
-      })}
+        ))}
+      </div>
+
     </div>
   );
 }
 
 const s = {
-  page:{ padding:20, background:"#020617", minHeight:"100vh", color:"white" },
-  header:{ display:"flex", justifyContent:"space-between", marginBottom:20 },
-  logout:{ background:"#ef4444", padding:8, borderRadius:8, color:"white" },
+  page: {
+    minHeight: "100vh",
+    padding: 20,
+    background: "radial-gradient(circle,#020617,#0f172a,#4c1d95)",
+    color: "white"
+  },
 
-  card:{ display:"flex", justifyContent:"space-between", padding:16, marginTop:12, background:"#1e293b", borderRadius:12 },
+  header: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center"
+  },
 
-  bio:{ fontSize:13, color:"#cbd5f5", whiteSpace:"pre-wrap" },
-  skills:{ fontSize:12, color:"#94a3b8" },
-  price:{ color:"#22c55e", marginTop:5 },
+  logo: {
+    fontSize: 22,
+    fontWeight: "bold"
+  },
 
-  portfolioBtn:{ marginTop:8, background:"#0ea5e9", padding:6, borderRadius:8, color:"white" },
+  cta: {
+    padding: "10px 18px",
+    borderRadius: 12,
+    background: "#6366f1",
+    border: "none",
+    color: "white",
+    cursor: "pointer"
+  },
 
-  lock:{ background:"#7c3aed", padding:8, borderRadius:8, color:"white" },
-  pending:{ background:"#f59e0b", padding:8, borderRadius:8 },
-  chat:{ background:"#22c55e", padding:8, borderRadius:8 },
-  rejected:{ background:"#ef4444", padding:8, borderRadius:8 }
+  hero: {
+    textAlign: "center",
+    marginTop: 60
+  },
+
+  title: {
+    fontSize: 32,
+    fontWeight: "bold"
+  },
+
+  gradient: {
+    background: "linear-gradient(90deg,#a78bfa,#60a5fa)",
+    WebkitBackgroundClip: "text",
+    WebkitTextFillColor: "transparent"
+  },
+
+  subtitle: {
+    marginTop: 10,
+    opacity: 0.7
+  },
+
+  grid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit,minmax(250px,1fr))",
+    gap: 20,
+    marginTop: 40
+  },
+
+  card: {
+    padding: 20,
+    borderRadius: 16,
+    background: "rgba(30,27,75,0.6)",
+    backdropFilter: "blur(20px)",
+    border: "1px solid rgba(255,255,255,0.1)"
+  },
+
+  skills: {
+    fontSize: 13,
+    opacity: 0.7
+  },
+
+  price: {
+    marginTop: 8,
+    fontWeight: "bold"
+  }
 };
