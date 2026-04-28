@@ -15,6 +15,7 @@ import { onAuthStateChanged, signOut } from "firebase/auth";
 import { useRouter } from "next/router";
 
 export default function Client() {
+  const [user, setUser] = useState(null);
   const [editors, setEditors] = useState([]);
   const [accessMap, setAccessMap] = useState({});
   const [loading, setLoading] = useState(true);
@@ -22,23 +23,19 @@ export default function Client() {
   const router = useRouter();
 
   useEffect(() => {
-    let unsubEditors = null;
-    let unsubAccess = null;
+    let unsubEditors, unsubAccess;
 
     const unsubAuth = onAuthStateChanged(auth, (u) => {
       if (!u) return router.replace("/login");
+      setUser(u);
 
-      // ✅ REALTIME EDITORS
+      // Editors
       unsubEditors = onSnapshot(collection(db, "editors"), (snap) => {
-        const list = snap.docs.map(d => ({
-          id: d.id,
-          ...d.data()
-        }));
-        setEditors(list);
+        setEditors(snap.docs.map(d => ({ id: d.id, ...d.data() })));
         setLoading(false);
       });
 
-      // ✅ REALTIME ACCESS (AUTO UPDATE AFTER ADMIN APPROVES)
+      // Access
       const q = query(
         collection(db, "clientAccess"),
         where("uid", "==", u.uid)
@@ -56,13 +53,12 @@ export default function Client() {
 
     return () => {
       unsubAuth();
-      if (unsubEditors) unsubEditors();
-      if (unsubAccess) unsubAccess();
+      unsubEditors && unsubEditors();
+      unsubAccess && unsubAccess();
     };
   }, []);
 
   const handleAction = async (editorId) => {
-    const user = auth.currentUser;
     if (!user) return;
 
     const status = accessMap[editorId];
@@ -75,222 +71,74 @@ export default function Client() {
       return alert("⏳ Waiting for admin approval...");
     }
 
-    // ✅ OPEN CHAT
-    const ids = [user.uid, editorId].sort();
-    const chatId = ids.join("_");
+    // OPEN CHAT
+    const chatId = [user.uid, editorId].sort().join("_");
 
     await setDoc(doc(db, "chats", chatId), {
       users: [user.uid, editorId],
-      createdAt: serverTimestamp()
+      createdAt: serverTimestamp(),
+      lastMessage: "",
+      lastUpdated: serverTimestamp(),
+      typing: {},
+      seen: {}
     }, { merge: true });
 
     router.push(`/chat/${chatId}`);
   };
 
-  if (loading) {
-    return (
-      <div style={s.loaderPage}>
-        <div style={s.spinner}></div>
-      </div>
-    );
+  if (loading || !user) {
+    return <div style={{color:"white",textAlign:"center",marginTop:50}}>Loading...</div>;
   }
 
   return (
     <div style={s.page}>
-      {/* HEADER */}
       <div style={s.header}>
-        <h1 style={s.title}>🔥 Find Your Editor</h1>
-        <button onClick={() => signOut(auth)} style={s.logout}>
-          Logout
-        </button>
+        <h1>🔥 Editors</h1>
+        <button onClick={() => signOut(auth)}>Logout</button>
       </div>
 
-      {/* LIST */}
-      <div style={s.grid}>
-        {editors.map((e) => {
-          const status = accessMap[e.id];
+      {editors.map(e => {
+        const status = accessMap[e.id];
 
-          let btnText = "🔒 Pay ₹10";
-          let btnStyle = s.lockBtn;
-          let badge = null;
+        let text = "🔒 Pay ₹10";
+        let style = s.lock;
 
-          if (status === "pending") {
-            btnText = "⏳ Pending";
-            btnStyle = s.pendingBtn;
-            badge = <span style={s.badgePending}>Pending</span>;
-          }
+        if (status === "pending") {
+          text = "⏳ Pending";
+          style = s.pending;
+        }
 
-          if (status === "approved") {
-            btnText = "💬 Chat Now";
-            btnStyle = s.chatBtn;
-            badge = <span style={s.badgeApproved}>Unlocked</span>;
-          }
+        if (status === "approved") {
+          text = "💬 Chat";
+          style = s.chat;
+        }
 
-          return (
-            <div key={e.id} style={s.card}>
-              <div style={s.top}>
-                <div style={s.avatar}>
-                  {e.name?.[0]?.toUpperCase() || "E"}
-                </div>
-
-                <div style={{ flex: 1 }}>
-                  <div style={s.name}>{e.name}</div>
-                  <div style={s.skills}>
-                    {e.skills?.join(", ") || "No skills"}
-                  </div>
-                </div>
-
-                {badge}
-              </div>
-
-              <div style={s.bottom}>
-                <div style={s.price}>₹{e.price}</div>
-
-                <button
-                  onClick={() => handleAction(e.id)}
-                  style={btnStyle}
-                  disabled={status === "pending"}
-                >
-                  {btnText}
-                </button>
-              </div>
+        return (
+          <div key={e.id} style={s.card}>
+            <div>
+              <b>{e.name}</b>
+              <div>{e.skills?.join(", ")}</div>
             </div>
-          );
-        })}
-      </div>
+
+            <button
+              onClick={() => handleAction(e.id)}
+              style={style}
+              disabled={status === "pending"}
+            >
+              {text}
+            </button>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
 const s = {
-  page: {
-    minHeight: "100vh",
-    padding: 20,
-    background: "linear-gradient(135deg,#020617,#0f172a,#1e1b4b)",
-    color: "white"
-  },
-
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    marginBottom: 20
-  },
-
-  title: {
-    fontSize: 24,
-    fontWeight: 800
-  },
-
-  logout: {
-    background: "#ef4444",
-    border: "none",
-    padding: "8px 16px",
-    borderRadius: 10,
-    color: "white",
-    cursor: "pointer"
-  },
-
-  grid: {
-    display: "grid",
-    gap: 16
-  },
-
-  card: {
-    padding: 18,
-    borderRadius: 16,
-    background: "rgba(30,41,59,0.6)",
-    backdropFilter: "blur(20px)",
-    border: "1px solid rgba(255,255,255,0.08)",
-    display: "flex",
-    flexDirection: "column",
-    gap: 14
-  },
-
-  top: {
-    display: "flex",
-    alignItems: "center",
-    gap: 12
-  },
-
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: "50%",
-    background: "linear-gradient(135deg,#7c3aed,#6366f1)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontWeight: 700
-  },
-
-  name: { fontWeight: 700 },
-  skills: { fontSize: 12, color: "#94a3b8" },
-
-  bottom: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center"
-  },
-
-  price: {
-    color: "#a78bfa",
-    fontWeight: 600
-  },
-
-  chatBtn: {
-    background: "#22c55e",
-    border: "none",
-    padding: "8px 14px",
-    borderRadius: 10,
-    color: "white",
-    fontWeight: 600
-  },
-
-  lockBtn: {
-    background: "#7c3aed",
-    border: "none",
-    padding: "8px 14px",
-    borderRadius: 10,
-    color: "white",
-    fontWeight: 600
-  },
-
-  pendingBtn: {
-    background: "#f59e0b",
-    border: "none",
-    padding: "8px 14px",
-    borderRadius: 10,
-    color: "white",
-    fontWeight: 600
-  },
-
-  badgeApproved: {
-    fontSize: 10,
-    background: "#22c55e",
-    padding: "4px 8px",
-    borderRadius: 6
-  },
-
-  badgePending: {
-    fontSize: 10,
-    background: "#f59e0b",
-    padding: "4px 8px",
-    borderRadius: 6
-  },
-
-  loaderPage: {
-    height: "100vh",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center"
-  },
-
-  spinner: {
-    width: 40,
-    height: 40,
-    border: "4px solid #333",
-    borderTop: "4px solid #7c3aed",
-    borderRadius: "50%",
-    animation: "spin 1s linear infinite"
-  }
+  page: { padding: 20, background: "#020617", minHeight: "100vh", color: "white" },
+  header: { display: "flex", justifyContent: "space-between" },
+  card: { display: "flex", justifyContent: "space-between", padding: 15, background: "#1e293b", marginTop: 10, borderRadius: 10 },
+  lock: { background: "#7c3aed", color: "white", border: "none", padding: 8, borderRadius: 8 },
+  pending: { background: "#f59e0b", color: "white", border: "none", padding: 8, borderRadius: 8 },
+  chat: { background: "#22c55e", color: "white", border: "none", padding: 8, borderRadius: 8 }
 };
