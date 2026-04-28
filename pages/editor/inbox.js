@@ -2,50 +2,47 @@
 
 import { useEffect, useState } from "react";
 import { db, auth } from "../../lib/firebase";
-import {
-  collection,
-  query,
-  where,
-  onSnapshot,
-} from "firebase/firestore";
-import { useRouter } from "next/navigation";
+import { collection, query, where, onSnapshot } from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
+import { useRouter } from "next/router";
 
 export default function EditorInbox() {
   const [chats, setChats] = useState([]);
   const router = useRouter();
 
   useEffect(() => {
-    const q = query(
-      collection(db, "chats"),
-      where("editorId", "==", auth.currentUser.uid),
-      where("visibleToEditor", "==", true)
-    );
+    onAuthStateChanged(auth, (user) => {
+      if (!user) return router.push("/login");
 
-    const unsub = onSnapshot(q, (snap) => {
-      setChats(
-        snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+      const q = query(
+        collection(db, "chats"),
+        where("editorId", "==", user.uid)
       );
-    });
 
-    return () => unsub();
+      onSnapshot(q, (snap) => {
+        setChats(snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+      });
+    });
   }, []);
 
   return (
-    <div className="p-4 bg-black min-h-screen text-white">
-      <h1 className="text-xl mb-4">Inbox</h1>
-
-      {chats.length === 0 && <p>No chats yet</p>}
+    <div style={{ padding: 20 }}>
+      <h2>Inbox</h2>
 
       {chats.map((chat) => (
         <div
           key={chat.id}
-          onClick={() => router.push(`/editor/chat/${chat.id}`)}
-          className="p-3 mb-2 bg-gray-800 rounded cursor-pointer"
+          onClick={() => router.push(`/chat/${chat.id}`)}
+          style={{
+            padding: 15,
+            background: "#111",
+            color: "#fff",
+            marginBottom: 10,
+            borderRadius: 10,
+            cursor: "pointer",
+          }}
         >
-          Client Chat
-          <p className="text-xs text-green-400">
-            {chat.clientOnline ? "Active" : "Offline"}
-          </p>
+          Chat #{chat.id.slice(0, 6)}
         </div>
       ))}
     </div>
