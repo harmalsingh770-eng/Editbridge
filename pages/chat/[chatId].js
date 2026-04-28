@@ -48,5 +48,13 @@ export default function Chat() {
   const user = auth.currentUser;
 
   if (!chat.unlocked && user.uid === chat.clientId) {
-    return (
-      <div
+  return (
+    <div style={s.lock}>
+      🔒 Chat Locked
+
+      <button onClick={() => router.push(`/payment?chatId=${chatId}`)}>
+        Pay ₹10
+      </button>
+    </div>
+  );
+}
