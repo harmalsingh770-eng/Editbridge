@@ -6,10 +6,7 @@ import {
   collection,
   onSnapshot,
   query,
-  where,
-  doc,
-  setDoc,
-  serverTimestamp
+  where
 } from "firebase/firestore";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { useRouter } from "next/router";
@@ -45,7 +42,9 @@ export default function Client() {
         const map = {};
         snap.docs.forEach(d => {
           const data = d.data();
-          map[data.editorId] = data.status;
+          if (data.editorId) {
+            map[data.editorId] = data.status;
+          }
         });
         setAccessMap(map);
       });
@@ -58,30 +57,19 @@ export default function Client() {
     };
   }, []);
 
-  const handleAction = async (editorId) => {
+  const handleAction = (editorId) => {
     if (!user) return;
 
     const status = accessMap[editorId];
 
-    if (!status) {
-      return router.push(`/pay/${editorId}`);
-    }
+    if (!status) return router.push(`/pay/${editorId}`);
 
     if (status === "pending") {
       return alert("⏳ Waiting for admin approval...");
     }
 
-    // OPEN CHAT
+    // ✅ OPEN SAME CHAT
     const chatId = [user.uid, editorId].sort().join("_");
-
-    await setDoc(doc(db, "chats", chatId), {
-      users: [user.uid, editorId],
-      createdAt: serverTimestamp(),
-      lastMessage: "",
-      lastUpdated: serverTimestamp(),
-      typing: {},
-      seen: {}
-    }, { merge: true });
 
     router.push(`/chat/${chatId}`);
   };
@@ -93,7 +81,7 @@ export default function Client() {
   return (
     <div style={s.page}>
       <div style={s.header}>
-        <h1>🔥 Editors</h1>
+        <h1>🔥 Find Your Editor</h1>
         <button onClick={() => signOut(auth)}>Logout</button>
       </div>
 
