@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { db, auth } from "../../lib/firebase";
 import {
   collection, addDoc, query, where,
@@ -16,10 +16,12 @@ export default function Chat() {
   const [text, setText] = useState("");
   const [isPaid, setIsPaid] = useState(false);
   const [deal, setDeal] = useState(null);
+  const [role, setRole] = useState("client");
 
   const user = auth.currentUser;
+  const bottomRef = useRef();
 
-  // 🔥 FIXED PAYMENT LOGIC
+  // 🔐 PAYMENT LOGIC (CLIENT ONLY)
   useEffect(() => {
     if (!chatId || !user) return;
 
@@ -27,8 +29,11 @@ export default function Chat() {
 
     if (user.uid === editorId) {
       setIsPaid(true);
+      setRole("editor");
       return;
     }
+
+    setRole("client");
 
     const q = query(
       collection(db, "paymentRequests"),
@@ -40,20 +45,25 @@ export default function Chat() {
     return onSnapshot(q, snap => {
       setIsPaid(!snap.empty);
     });
-  }, [chatId]);
+  }, [chatId, user]);
 
-  // messages
+  // 💬 MESSAGES
   useEffect(() => {
     if (!chatId) return;
 
-    const q = query(collection(db, "messages"), where("chatId", "==", chatId));
+    const q = query(
+      collection(db, "messages"),
+      where("chatId", "==", chatId)
+    );
 
     return onSnapshot(q, snap => {
-      setMessages(snap.docs.map(d => d.data()));
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setMessages(data);
+      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
     });
   }, [chatId]);
 
-  // deals
+  // 💼 DEALS
   useEffect(() => {
     if (!chatId) return;
 
@@ -62,12 +72,15 @@ export default function Chat() {
     return onSnapshot(q, snap => {
       if (!snap.empty) {
         setDeal({ id: snap.docs[0].id, ...snap.docs[0].data() });
+      } else {
+        setDeal(null);
       }
     });
   }, [chatId]);
 
+  // ✉️ SEND MESSAGE
   const send = async () => {
-    if (!text) return;
+    if (!text.trim()) return;
 
     await addDoc(collection(db, "messages"), {
       chatId,
@@ -79,33 +92,76 @@ export default function Chat() {
     setText("");
   };
 
+  // 💰 SEND DEAL (CLIENT ONLY)
   const sendDeal = async () => {
+    if (role !== "client") return;
+
     const price = prompt("Enter deal price");
     if (!price) return;
 
     await addDoc(collection(db, "deals"), {
       chatId,
       clientId: user.uid,
+      editorId: chatId.split("_")[1],
       price: Number(price),
       status: "pending",
       createdAt: serverTimestamp()
     });
   };
 
+  // 🔁 COUNTER OFFER (EDITOR)
+  const counterDeal = async () => {
+    const newPrice = prompt("Enter counter price");
+    if (!newPrice) return;
+
+    await updateDoc(doc(db, "deals", deal.id), {
+      price: Number(newPrice),
+      status: "countered"
+    });
+  };
+
+  // ❌ REJECT DEAL
+  const rejectDeal = async () => {
+    await updateDoc(doc(db, "deals", deal.id), {
+      status: "rejected"
+    });
+  };
+
+  // ✅ ACCEPT DEAL + CREATE PAYMENT (EDITOR)
   const acceptDeal = async () => {
-    if (!confirm("Confirm?")) return;
-    if (!confirm("Final confirm?")) return;
+    if (!confirm("Accept this deal?")) return;
+    if (!confirm("Final confirmation?")) return;
 
     await updateDoc(doc(db, "deals", deal.id), {
       status: "accepted"
     });
+
+    const commission = Math.floor(deal.price * 0.1);
+
+    // 💸 CREATE EDITOR PAYMENT REQUEST
+    await addDoc(collection(db, "editorPayments"), {
+      editorId: user.uid,
+      chatId,
+      dealId: deal.id,
+      totalAmount: deal.price,
+      commission: commission,
+      status: "pending",
+      createdAt: serverTimestamp()
+    });
+
+    alert(`Deal accepted ✅\nYou must pay ₹${commission} to platform`);
   };
 
+  // 🔒 LOCK SCREEN
   if (!isPaid) {
     return (
-      <div style={s.lock}>
+      <div style={s.lockPage}>
         <h2>🔒 Chat Locked</h2>
-        <button onClick={() => router.push(`/pay/${chatId.split("_")[1]}`)}>
+        <p>Pay ₹10 to unlock chat</p>
+        <button
+          style={s.unlockBtn}
+          onClick={() => router.push(`/pay/${chatId.split("_")[1]}`)}
+        >
           Unlock Chat
         </button>
       </div>
@@ -115,29 +171,63 @@ export default function Chat() {
   return (
     <div style={s.page}>
 
+      {/* 💬 CHAT */}
       <div style={s.chatBox}>
-        {messages.map((m, i) => (
-          <div key={i} style={{
-            ...s.msg,
-            alignSelf: m.senderId === user.uid ? "flex-end" : "flex-start"
-          }}>
-            {m.text}
-          </div>
-        ))}
+        {messages.map(m => {
+          const isMe = m.senderId === user.uid;
+          return (
+            <div key={m.id} style={{
+              ...s.msg,
+              alignSelf: isMe ? "flex-end" : "flex-start",
+              background: isMe ? "#7c3aed" : "#334155"
+            }}>
+              {m.text}
+            </div>
+          );
+        })}
+        <div ref={bottomRef} />
       </div>
 
+      {/* 💼 DEAL BOX */}
       {deal && (
-        <div style={s.deal}>
-          ₹{deal.price} ({deal.status})
-          <button onClick={acceptDeal}>Accept</button>
+        <div style={s.dealBox}>
+          <div>
+            💼 ₹{deal.price} • {deal.status}
+          </div>
+
+          {role === "editor" && deal.status === "pending" && (
+            <>
+              <button onClick={acceptDeal} style={s.green}>Accept</button>
+              <button onClick={counterDeal} style={s.blue}>Counter</button>
+              <button onClick={rejectDeal} style={s.red}>Reject</button>
+            </>
+          )}
+
+          {role === "client" && deal.status === "countered" && (
+            <>
+              <button onClick={acceptDeal} style={s.green}>Accept</button>
+              <button onClick={rejectDeal} style={s.red}>Reject</button>
+            </>
+          )}
         </div>
       )}
 
-      <button onClick={sendDeal}>Send Deal</button>
+      {/* ➕ SEND DEAL */}
+      {role === "client" && (
+        <button onClick={sendDeal} style={s.dealBtn}>
+          Send Deal
+        </button>
+      )}
 
+      {/* INPUT */}
       <div style={s.inputRow}>
-        <input value={text} onChange={e => setText(e.target.value)} />
-        <button onClick={send}>Send</button>
+        <input
+          value={text}
+          onChange={e => setText(e.target.value)}
+          placeholder="Type message..."
+          style={s.input}
+        />
+        <button onClick={send} style={s.sendBtn}>Send</button>
       </div>
 
     </div>
@@ -145,10 +235,90 @@ export default function Chat() {
 }
 
 const s = {
-  page: { height: "100vh", display: "flex", flexDirection: "column", background: "#020617", color: "white" },
-  chatBox: { flex: 1, padding: 10, display: "flex", flexDirection: "column", gap: 8 },
-  msg: { padding: 10, borderRadius: 10, background: "#334155", maxWidth: "70%" },
-  inputRow: { display: "flex", padding: 10 },
-  deal: { padding: 10, background: "#1e293b" },
-  lock: { height: "100vh", display: "flex", justifyContent: "center", alignItems: "center", flexDirection: "column" }
+  page: {
+    height: "100vh",
+    display: "flex",
+    flexDirection: "column",
+    background: "linear-gradient(135deg,#020617,#0f172a,#1e1b4b)",
+    color: "white"
+  },
+
+  chatBox: {
+    flex: 1,
+    padding: 15,
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+    overflowY: "auto"
+  },
+
+  msg: {
+    padding: "10px 14px",
+    borderRadius: 12,
+    maxWidth: "70%"
+  },
+
+  inputRow: {
+    display: "flex",
+    padding: 10,
+    gap: 8
+  },
+
+  input: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 10,
+    border: "none",
+    background: "#1e293b",
+    color: "white"
+  },
+
+  sendBtn: {
+    padding: "10px 18px",
+    background: "#7c3aed",
+    border: "none",
+    borderRadius: 10,
+    color: "white"
+  },
+
+  dealBox: {
+    padding: 12,
+    background: "#1e293b",
+    display: "flex",
+    gap: 8,
+    flexWrap: "wrap",
+    alignItems: "center"
+  },
+
+  dealBtn: {
+    margin: 10,
+    padding: 10,
+    background: "#6366f1",
+    border: "none",
+    borderRadius: 10,
+    color: "white"
+  },
+
+  green: { background: "#10b981", border: "none", padding: "6px 10px", borderRadius: 8, color: "white" },
+  red: { background: "#ef4444", border: "none", padding: "6px 10px", borderRadius: 8, color: "white" },
+  blue: { background: "#3b82f6", border: "none", padding: "6px 10px", borderRadius: 8, color: "white" },
+
+  lockPage: {
+    height: "100vh",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    flexDirection: "column",
+    background: "#020617",
+    color: "white"
+  },
+
+  unlockBtn: {
+    marginTop: 12,
+    padding: "12px 20px",
+    background: "#7c3aed",
+    border: "none",
+    borderRadius: 10,
+    color: "white"
+  }
 };
