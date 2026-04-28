@@ -1,11 +1,7 @@
 import { useRouter } from "next/router";
 import { useState } from "react";
 import { db, auth } from "../../lib/firebase";
-import {
-  addDoc,
-  collection,
-  serverTimestamp
-} from "firebase/firestore";
+import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 
 export default function Payment() {
   const router = useRouter();
@@ -14,69 +10,47 @@ export default function Payment() {
   const [txnId, setTxnId] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const amount = 10;
-
-  const upiLink = `upi://pay?pa=yourupi@upi&pn=EditBridge&am=${amount}&cu=INR`;
-
   const submit = async () => {
-    if (!txnId) return alert("Enter transaction ID");
-
     const user = auth.currentUser;
+    if (!txnId) return alert("Enter transaction ID");
     if (!user) return alert("Login required");
 
     setLoading(true);
 
-    try {
-      // ✅ CREATE CHAT ID (IMPORTANT)
-      const ids = [user.uid, editorId].sort();
-      const chatId = ids.join("_");
+    const chatId = [user.uid, editorId].sort().join("_");
 
-      // ✅ SAVE PAYMENT WITH EMAIL + CHATID
-      await addDoc(collection(db, "paymentRequests"), {
-        uid: user.uid,
-        email: user.email, // ✅ FIXED
-        editorId: editorId,
-        chatId: chatId,    // ✅ IMPORTANT LINK
-        txnId: txnId,
-        status: "pending",
-        createdAt: serverTimestamp()
-      });
+    await addDoc(collection(db, "paymentRequests"), {
+      uid: user.uid,
+      email: user.email,
+      editorId,
+      chatId,
+      txnId,
+      status: "pending",
+      createdAt: serverTimestamp()
+    });
 
-      alert("Payment submitted. Wait for admin approval.");
-
-      router.push("/client");
-
-    } catch (err) {
-      alert(err.message);
-    }
-
-    setLoading(false);
+    alert("Payment sent for approval");
+    router.push("/client");
   };
 
   return (
     <div style={s.page}>
       <div style={s.card}>
-        <h2 style={s.title}>🔒 Unlock Chat</h2>
+        <h2>🔒 Unlock Chat</h2>
 
-        <p style={s.subtitle}>
-          Pay ₹{amount} to start chatting with editor
-        </p>
-
-        <a href={upiLink} style={s.upiBtn}>
-          Open UPI App
+        <a href="upi://pay?pa=yourupi@upi&pn=EditBridge&am=10&cu=INR" style={s.pay}>
+          Pay ₹10 via UPI
         </a>
 
-        <p style={s.note}>After payment, paste transaction ID below</p>
-
         <input
-          placeholder="Enter Transaction ID"
+          placeholder="Transaction ID"
           value={txnId}
           onChange={(e) => setTxnId(e.target.value)}
           style={s.input}
         />
 
-        <button onClick={submit} style={s.btn} disabled={loading}>
-          {loading ? "Submitting..." : "Submit Payment"}
+        <button onClick={submit} style={s.btn}>
+          {loading ? "Submitting..." : "Submit"}
         </button>
       </div>
     </div>
@@ -85,50 +59,39 @@ export default function Payment() {
 
 const s = {
   page: {
-    minHeight: "100vh",
-    background: "linear-gradient(135deg,#020617,#0f172a,#1e1b4b)",
+    height: "100vh",
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
-    color: "white"
+    background: "#020617"
   },
   card: {
-    width: 320,
+    background: "#1e293b",
     padding: 25,
     borderRadius: 16,
-    background: "rgba(30,27,75,0.6)",
-    backdropFilter: "blur(20px)",
-    border: "1px solid rgba(255,255,255,0.1)"
+    width: 300
   },
-  title: { fontSize: 20, fontWeight: 700, marginBottom: 10 },
-  subtitle: { fontSize: 14, color: "#94a3b8", marginBottom: 15 },
-  upiBtn: {
+  pay: {
     display: "block",
-    textAlign: "center",
-    padding: 12,
-    borderRadius: 10,
     background: "#22c55e",
-    color: "white",
-    textDecoration: "none",
+    padding: 10,
+    textAlign: "center",
+    borderRadius: 10,
     marginBottom: 10,
-    fontWeight: 600
+    color: "white"
   },
-  note: { fontSize: 12, color: "#94a3b8", marginBottom: 8 },
   input: {
     width: "100%",
     padding: 10,
-    borderRadius: 8,
-    border: "none",
     marginBottom: 10,
-    outline: "none"
+    borderRadius: 8
   },
   btn: {
     width: "100%",
-    padding: 12,
-    borderRadius: 10,
-    border: "none",
+    padding: 10,
     background: "#7c3aed",
+    border: "none",
     color: "white",
-    fontWeight: 700
+    borderRadius: 10
   }
 };
