@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { db, auth } from "../../lib/firebase";
 import {
   doc,
@@ -10,7 +10,8 @@ import {
   addDoc,
   onSnapshot,
   query,
-  orderBy
+  orderBy,
+  updateDoc
 } from "firebase/firestore";
 
 export default function Chat() {
@@ -21,17 +22,16 @@ export default function Chat() {
   const [msgs, setMsgs] = useState([]);
   const [text, setText] = useState("");
 
+  const bottomRef = useRef(null);
   const user = auth.currentUser;
 
-  // 🔥 LOAD CHAT + MESSAGES
+  // 🔄 LOAD CHAT + MESSAGES
   useEffect(() => {
     if (!chatId) return;
 
     const load = async () => {
       const snap = await getDoc(doc(db, "chats", chatId));
-      if (snap.exists()) {
-        setChat(snap.data());
-      }
+      if (snap.exists()) setChat(snap.data());
     };
 
     load();
@@ -42,7 +42,27 @@ export default function Chat() {
     );
 
     const unsub = onSnapshot(q, (snap) => {
-      setMsgs(snap.docs.map((d) => d.data()));
+      const data = snap.docs.map((d) => ({
+        id: d.id,
+        ...d.data()
+      }));
+
+      setMsgs(data);
+
+      // ✅ AUTO SCROLL
+      setTimeout(() => {
+        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      }, 100);
+
+      // ✅ MARK AS SEEN
+      data.forEach(async (m) => {
+        if (m.sender !== user?.uid && !m.seen) {
+          await updateDoc(
+            doc(db, "chats", chatId, "messages", m.id),
+            { seen: true }
+          );
+        }
+      });
     });
 
     return () => unsub();
@@ -75,10 +95,33 @@ export default function Chat() {
     await addDoc(collection(db, "chats", chatId, "messages"), {
       text,
       sender: user.uid,
-      createdAt: new Date()
+      createdAt: new Date(),
+      seen: false
     });
 
     setText("");
+  };
+
+  // 🔗 LINK DETECTOR
+  const renderText = (msg) => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+
+    return msg.split(urlRegex).map((part, i) =>
+      part.match(urlRegex) ? (
+        <a key={i} href={part} target="_blank" style={s.link}>
+          {part}
+        </a>
+      ) : (
+        part
+      )
+    );
+  };
+
+  // ⏱ FORMAT TIME
+  const formatTime = (date) => {
+    if (!date) return "";
+    const d = date.seconds ? new Date(date.seconds * 1000) : new Date(date);
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
 
   return (
@@ -88,14 +131,31 @@ export default function Chat() {
 
       {/* MESSAGES */}
       <div style={s.chat}>
-        {msgs.map((m, i) => (
-          <div
-            key={i}
-            style={m.sender === user.uid ? s.me : s.other}
-          >
-            {m.text}
-          </div>
-        ))}
+        {msgs.map((m) => {
+          const isMe = m.sender === user.uid;
+
+          return (
+            <div
+              key={m.id}
+              style={isMe ? s.meWrap : s.otherWrap}
+            >
+              <div style={isMe ? s.me : s.other}>
+                <div>{renderText(m.text)}</div>
+
+                <div style={s.meta}>
+                  <span>{formatTime(m.createdAt)}</span>
+
+                  {isMe && (
+                    <span style={{ marginLeft: 5 }}>
+                      {m.seen ? "✓✓" : "✓"}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        <div ref={bottomRef} />
       </div>
 
       {/* INPUT */}
@@ -105,6 +165,7 @@ export default function Chat() {
           onChange={(e) => setText(e.target.value)}
           placeholder="Type message..."
           style={s.input}
+          onKeyDown={(e) => e.key === "Enter" && send()}
         />
         <button onClick={send} style={s.send}>
           Send
@@ -127,18 +188,27 @@ const s = {
   header: {
     padding: 15,
     fontWeight: "bold",
-    background: "#0f172a"
+    background: "#0f172a",
+    textAlign: "center"
   },
 
   chat: {
     flex: 1,
     padding: 10,
+    overflowY: "auto"
+  },
+
+  meWrap: {
     display: "flex",
-    flexDirection: "column"
+    justifyContent: "flex-end"
+  },
+
+  otherWrap: {
+    display: "flex",
+    justifyContent: "flex-start"
   },
 
   me: {
-    alignSelf: "flex-end",
     background: "#7c3aed",
     padding: 10,
     margin: 5,
@@ -147,12 +217,24 @@ const s = {
   },
 
   other: {
-    alignSelf: "flex-start",
     background: "#334155",
     padding: 10,
     margin: 5,
     borderRadius: 12,
     maxWidth: "70%"
+  },
+
+  meta: {
+    fontSize: 10,
+    marginTop: 5,
+    display: "flex",
+    justifyContent: "flex-end",
+    opacity: 0.7
+  },
+
+  link: {
+    color: "#60a5fa",
+    textDecoration: "underline"
   },
 
   inputRow: {
