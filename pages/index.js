@@ -1,4 +1,3 @@
-"use client";
 import { useRouter } from "next/router";
 
 export default function Home() {
@@ -6,35 +5,49 @@ export default function Home() {
 
   return (
     <div style={s.page}>
-      <div style={s.card}>
-        <h1 style={s.title}>💜 EditBridge</h1>
-        <p style={s.sub}>Connect with pro editors instantly</p>
+      <h1 style={s.title}>💜 EditBridge</h1>
 
-        <div style={s.row}>
-          <button onClick={() => router.push("/login")} style={s.btn}>
-            Client
-          </button>
+      <div style={s.box}>
+        <button onClick={() => router.push("/login?type=client")} style={s.btn}>
+          Client Login
+        </button>
 
-          <button onClick={() => router.push("/login?type=editor")} style={s.btnPrimary}>
-            Editor
-          </button>
+        <button onClick={() => router.push("/login?type=editor")} style={s.btn}>
+          Editor Login
+        </button>
 
-          <button onClick={() => router.push("/admin-login")} style={s.btnDanger}>
-            Admin
-          </button>
-        </div>
+        <button onClick={() => router.push("/admin-login")} style={s.admin}>
+          Admin
+        </button>
       </div>
     </div>
   );
 }
 
 const s = {
-  page: { height:"100vh", display:"flex", justifyContent:"center", alignItems:"center", background:"linear-gradient(135deg,#0f0c29,#302b63,#24243e)" },
-  card: { padding:40, borderRadius:20, background:"rgba(255,255,255,0.05)", backdropFilter:"blur(15px)", textAlign:"center" },
-  title: { color:"#fff", fontSize:32 },
-  sub: { color:"#aaa", marginBottom:20 },
-  row: { display:"flex", gap:10 },
-  btn: { padding:12, borderRadius:10, background:"#334155", color:"#fff" },
-  btnPrimary: { padding:12, borderRadius:10, background:"#7c3aed", color:"#fff" },
-  btnDanger: { padding:12, borderRadius:10, background:"#ef4444", color:"#fff" }
+  page: {
+    height: "100vh",
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "center",
+    alignItems: "center",
+    background: "linear-gradient(135deg,#020617,#0f172a,#4c1d95)",
+    color: "white"
+  },
+  title: { fontSize: 32, marginBottom: 30 },
+  box: { display: "flex", flexDirection: "column", gap: 15 },
+  btn: {
+    padding: 12,
+    background: "#7c3aed",
+    border: "none",
+    color: "white",
+    borderRadius: 10
+  },
+  admin: {
+    padding: 12,
+    background: "#ef4444",
+    border: "none",
+    color: "white",
+    borderRadius: 10
+  }
 };
