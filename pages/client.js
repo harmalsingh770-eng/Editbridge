@@ -6,7 +6,7 @@ import {
   collection,
   onSnapshot
 } from "firebase/firestore";
-import Reviews from "../components/Reviews";
+import Reviews from "../components/reviews";
 
 export default function Client() {
   const [editors, setEditors] = useState([]);
@@ -60,7 +60,7 @@ export default function Client() {
             <p style={s.price}>₹{editor.price}</p>
 
             {/* ⭐ REVIEWS (Top 2) */}
-            <Reviews editorId={editor.id} />
+            <reviews editorId={editor.id} />
 
           </div>
         ))}
