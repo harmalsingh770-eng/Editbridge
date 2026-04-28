@@ -1,5 +1,5 @@
 import { useRouter } from "next/router";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { db, auth } from "../../lib/firebase";
 import {
   addDoc,
@@ -14,28 +14,36 @@ export default function Payment() {
   const [txnId, setTxnId] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // ✅ FIXED AMOUNT
   const amount = 10;
 
-  // ✅ UPI LINK
   const upiLink = `upi://pay?pa=yourupi@upi&pn=EditBridge&am=${amount}&cu=INR`;
 
   const submit = async () => {
     if (!txnId) return alert("Enter transaction ID");
-    if (!auth.currentUser) return alert("Login required");
+
+    const user = auth.currentUser;
+    if (!user) return alert("Login required");
 
     setLoading(true);
 
     try {
+      // ✅ CREATE CHAT ID (IMPORTANT)
+      const ids = [user.uid, editorId].sort();
+      const chatId = ids.join("_");
+
+      // ✅ SAVE PAYMENT WITH EMAIL + CHATID
       await addDoc(collection(db, "paymentRequests"), {
-        uid: auth.currentUser.uid,
+        uid: user.uid,
+        email: user.email, // ✅ FIXED
         editorId: editorId,
+        chatId: chatId,    // ✅ IMPORTANT LINK
         txnId: txnId,
-        status: "pending", // ✅ STRING (important)
+        status: "pending",
         createdAt: serverTimestamp()
       });
 
       alert("Payment submitted. Wait for admin approval.");
+
       router.push("/client");
 
     } catch (err) {
@@ -54,7 +62,6 @@ export default function Payment() {
           Pay ₹{amount} to start chatting with editor
         </p>
 
-        {/* ✅ UPI BUTTON */}
         <a href={upiLink} style={s.upiBtn}>
           Open UPI App
         </a>
@@ -85,7 +92,6 @@ const s = {
     alignItems: "center",
     color: "white"
   },
-
   card: {
     width: 320,
     padding: 25,
@@ -94,19 +100,8 @@ const s = {
     backdropFilter: "blur(20px)",
     border: "1px solid rgba(255,255,255,0.1)"
   },
-
-  title: {
-    fontSize: 20,
-    fontWeight: 700,
-    marginBottom: 10
-  },
-
-  subtitle: {
-    fontSize: 14,
-    color: "#94a3b8",
-    marginBottom: 15
-  },
-
+  title: { fontSize: 20, fontWeight: 700, marginBottom: 10 },
+  subtitle: { fontSize: 14, color: "#94a3b8", marginBottom: 15 },
   upiBtn: {
     display: "block",
     textAlign: "center",
@@ -118,13 +113,7 @@ const s = {
     marginBottom: 10,
     fontWeight: 600
   },
-
-  note: {
-    fontSize: 12,
-    color: "#94a3b8",
-    marginBottom: 8
-  },
-
+  note: { fontSize: 12, color: "#94a3b8", marginBottom: 8 },
   input: {
     width: "100%",
     padding: 10,
@@ -133,7 +122,6 @@ const s = {
     marginBottom: 10,
     outline: "none"
   },
-
   btn: {
     width: "100%",
     padding: 12,
