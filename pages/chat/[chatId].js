@@ -3,14 +3,8 @@
 import { useEffect, useState } from "react";
 import { db, auth } from "../../lib/firebase";
 import {
-  collection,
-  addDoc,
-  query,
-  where,
-  onSnapshot,
-  serverTimestamp,
-  updateDoc,
-  doc
+  collection, addDoc, query, where,
+  onSnapshot, serverTimestamp, updateDoc, doc
 } from "firebase/firestore";
 import { useRouter } from "next/router";
 
@@ -25,9 +19,16 @@ export default function Chat() {
 
   const user = auth.currentUser;
 
-  // 🔒 Check payment
+  // 🔥 FIXED PAYMENT LOGIC
   useEffect(() => {
     if (!chatId || !user) return;
+
+    const [clientId, editorId] = chatId.split("_");
+
+    if (user.uid === editorId) {
+      setIsPaid(true);
+      return;
+    }
 
     const q = query(
       collection(db, "paymentRequests"),
@@ -36,42 +37,35 @@ export default function Chat() {
       where("status", "==", "approved")
     );
 
-    return onSnapshot(q, (snap) => {
+    return onSnapshot(q, snap => {
       setIsPaid(!snap.empty);
     });
   }, [chatId]);
 
-  // 💬 messages
+  // messages
   useEffect(() => {
     if (!chatId) return;
 
-    const q = query(
-      collection(db, "messages"),
-      where("chatId", "==", chatId)
-    );
+    const q = query(collection(db, "messages"), where("chatId", "==", chatId));
 
-    return onSnapshot(q, (snap) => {
+    return onSnapshot(q, snap => {
       setMessages(snap.docs.map(d => d.data()));
     });
   }, [chatId]);
 
-  // 💼 deal
+  // deals
   useEffect(() => {
     if (!chatId) return;
 
-    const q = query(
-      collection(db, "deals"),
-      where("chatId", "==", chatId)
-    );
+    const q = query(collection(db, "deals"), where("chatId", "==", chatId));
 
-    return onSnapshot(q, (snap) => {
+    return onSnapshot(q, snap => {
       if (!snap.empty) {
         setDeal({ id: snap.docs[0].id, ...snap.docs[0].data() });
       }
     });
   }, [chatId]);
 
-  // send msg
   const send = async () => {
     if (!text) return;
 
@@ -85,7 +79,6 @@ export default function Chat() {
     setText("");
   };
 
-  // 🔥 deal send
   const sendDeal = async () => {
     const price = prompt("Enter deal price");
     if (!price) return;
@@ -99,9 +92,8 @@ export default function Chat() {
     });
   };
 
-  // accept deal
   const acceptDeal = async () => {
-    if (!confirm("Accept?")) return;
+    if (!confirm("Confirm?")) return;
     if (!confirm("Final confirm?")) return;
 
     await updateDoc(doc(db, "deals", deal.id), {
@@ -111,34 +103,52 @@ export default function Chat() {
 
   if (!isPaid) {
     return (
-      <div>
-        <h2>🔒 Pay to unlock chat</h2>
+      <div style={s.lock}>
+        <h2>🔒 Chat Locked</h2>
         <button onClick={() => router.push(`/pay/${chatId.split("_")[1]}`)}>
-          Pay ₹10
+          Unlock Chat
         </button>
       </div>
     );
   }
 
   return (
-    <div>
-      <h2>Chat</h2>
+    <div style={s.page}>
+
+      <div style={s.chatBox}>
+        {messages.map((m, i) => (
+          <div key={i} style={{
+            ...s.msg,
+            alignSelf: m.senderId === user.uid ? "flex-end" : "flex-start"
+          }}>
+            {m.text}
+          </div>
+        ))}
+      </div>
 
       {deal && (
-        <div>
-          Deal: ₹{deal.price} ({deal.status})
+        <div style={s.deal}>
+          ₹{deal.price} ({deal.status})
           <button onClick={acceptDeal}>Accept</button>
         </div>
       )}
 
       <button onClick={sendDeal}>Send Deal</button>
 
-      {messages.map((m, i) => (
-        <p key={i}>{m.text}</p>
-      ))}
+      <div style={s.inputRow}>
+        <input value={text} onChange={e => setText(e.target.value)} />
+        <button onClick={send}>Send</button>
+      </div>
 
-      <input value={text} onChange={e => setText(e.target.value)} />
-      <button onClick={send}>Send</button>
     </div>
   );
 }
+
+const s = {
+  page: { height: "100vh", display: "flex", flexDirection: "column", background: "#020617", color: "white" },
+  chatBox: { flex: 1, padding: 10, display: "flex", flexDirection: "column", gap: 8 },
+  msg: { padding: 10, borderRadius: 10, background: "#334155", maxWidth: "70%" },
+  inputRow: { display: "flex", padding: 10 },
+  deal: { padding: 10, background: "#1e293b" },
+  lock: { height: "100vh", display: "flex", justifyContent: "center", alignItems: "center", flexDirection: "column" }
+};
