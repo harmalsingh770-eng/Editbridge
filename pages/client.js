@@ -2,16 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { db } from "../lib/firebase";
-import {
-  collection,
-  onSnapshot
-} from "firebase/firestore";
-import Reviews from "../components/reviews";
+import { collection, onSnapshot } from "firebase/firestore";
+import Reviews from "../components/Reviews";
 
 export default function Client() {
   const [editors, setEditors] = useState([]);
 
-  // 🔥 Fetch editors
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "editors"), (snap) => {
       const data = snap.docs.map((doc) => ({
@@ -19,7 +15,6 @@ export default function Client() {
         ...doc.data()
       }));
 
-      // Only approved editors
       setEditors(data.filter((e) => e.approved));
     });
 
@@ -28,14 +23,13 @@ export default function Client() {
 
   return (
     <div style={s.page}>
-
-      {/* 🔥 HEADER */}
+      {/* HEADER */}
       <div style={s.header}>
-        <h1 style={s.logo}>EditBridge</h1>
+        <h1 style={s.logo}>🎬 EditBridge</h1>
         <button style={s.cta}>🚀 Get Started</button>
       </div>
 
-      {/* 🔥 HERO */}
+      {/* HERO */}
       <div style={s.hero}>
         <h1 style={s.title}>
           Work with <span style={s.gradient}>Top Editors</span>
@@ -46,11 +40,10 @@ export default function Client() {
         </p>
       </div>
 
-      {/* 🔥 EDITORS LIST */}
+      {/* EDITORS */}
       <div style={s.grid}>
         {editors.map((editor) => (
           <div key={editor.id} style={s.card}>
-
             <h2>{editor.name}</h2>
 
             <p style={s.skills}>
@@ -59,13 +52,11 @@ export default function Client() {
 
             <p style={s.price}>₹{editor.price}</p>
 
-            {/* ⭐ REVIEWS (Top 2) */}
-            <reviews editorId={editor.id} />
-
+            {/* ⭐ Reviews */}
+            <Reviews editorId={editor.id} />
           </div>
         ))}
       </div>
-
     </div>
   );
 }
@@ -94,8 +85,7 @@ const s = {
     borderRadius: 12,
     background: "#6366f1",
     border: "none",
-    color: "white",
-    cursor: "pointer"
+    color: "white"
   },
 
   hero: {
