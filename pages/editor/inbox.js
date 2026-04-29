@@ -17,7 +17,6 @@ export default function EditorInbox() {
     unsubAuthRef.current = onAuthStateChanged(auth, (u) => {
       if (!u) return router.replace("/login?type=editor");
 
-      // âœ… Query by editorId field (how client.js saves it)
       const q = query(
         collection(db, "chats"),
         where("editorId", "==", u.uid)
@@ -65,7 +64,7 @@ export default function EditorInbox() {
 
       {chats.length === 0 ? (
         <div style={s.empty}>
-          <div style={{ fontSize: 44, marginBottom: 12 }}>ðŸ“­</div>
+          <div style={{ fontSize: 44, marginBottom: 12 }}>📭</div>
           <p style={{ fontWeight: 600, margin: 0 }}>No chats yet</p>
           <p style={{ color: "#94a3b8", fontSize: 13, marginTop: 6 }}>
             Clients will appear here after paying
@@ -74,6 +73,8 @@ export default function EditorInbox() {
       ) : (
         <div style={s.list}>
           {chats.map(c => (
+            // ✅ FIX: Editor can ALWAYS open any chat regardless of payment status
+            // The lock screen only applies to clients, not editors
             <div key={c.id} style={s.card} onClick={() => router.push("/chat/" + c.id)}>
               <div style={s.avatar}>{c.clientName?.[0]?.toUpperCase() || "C"}</div>
               <div style={s.info}>
@@ -81,10 +82,17 @@ export default function EditorInbox() {
                 <div style={s.lastMsg}>{c.lastMessage || "No messages yet"}</div>
               </div>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+                {/* ✅ FIX: Show correct status label:
+                    - "Unlocked" (green)  = client has paid, can chat
+                    - "Pending"  (orange) = client hasn't paid yet
+                    Editor can open BOTH — only client sees lock screen */}
                 <span style={{ ...s.statusPill, background: c.unlocked ? "#10b981" : "#f59e0b" }}>
                   {c.unlocked ? "Unlocked" : "Pending"}
                 </span>
-                <span style={s.arrow}>{">"}</span>
+                {/* ✅ Show lock icon hint on pending so editor knows client can't chat yet */}
+                {!c.unlocked && (
+                  <span style={s.lockHint}>🔒 Client unpaid</span>
+                )}
               </div>
             </div>
           ))}
@@ -113,6 +121,7 @@ const s = {
   name: { fontWeight: 600, fontSize: 15, marginBottom: 3 },
   lastMsg: { color: "#94a3b8", fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
   statusPill: { padding: "2px 8px", borderRadius: 20, fontSize: 11, color: "white", fontWeight: 600 },
+  lockHint: { fontSize: 10, color: "#f59e0b", opacity: 0.8 },
   arrow: { color: "#475569", fontSize: 18 },
   empty: { textAlign: "center", marginTop: 80, padding: 20 },
 };
