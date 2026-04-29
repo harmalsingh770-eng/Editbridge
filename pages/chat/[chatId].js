@@ -9,6 +9,8 @@ import {
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 
+const ADMIN_EMAIL = "admin@editbridge.com"; // ✅ same as admin/index.js
+
 export default function Chat() {
   const router = useRouter();
   const { chatId } = router.query;
@@ -45,15 +47,23 @@ export default function Chat() {
       const data = snap.data();
       setChat(data);
 
+      // ✅ FIX 1: Admin always gets full access — check BEFORE role detection
+      if (user.email === ADMIN_EMAIL) {
+        setRole("editor"); // treat admin like editor (full access)
+        setIsPaid(true);
+        setOtherName("Chat Room");
+        setLoading(false);
+        return;
+      }
+
       // Determine role
       const editorId = data.editorId || chatId.split("_")[1];
       const isEditor = user.uid === editorId;
       setRole(isEditor ? "editor" : "client");
 
-      // ✅ FIX: Editors NEVER need to pay
+      // ✅ Editors NEVER need to pay
       if (isEditor) {
         setIsPaid(true);
-        // get client name
         try {
           const cSnap = await getDoc(doc(db, "users", data.clientId));
           if (cSnap.exists()) setOtherName(cSnap.data().email || "Client");
@@ -62,7 +72,7 @@ export default function Chat() {
         return;
       }
 
-      // ✅ FIX: Check BOTH clientAccess AND chat.unlocked
+      // ✅ Check BOTH clientAccess AND chat.unlocked
       const accessSnap = await getDoc(doc(db, "clientAccess", chatId));
       const isApproved =
         (accessSnap.exists() && accessSnap.data().status === "approved") ||
@@ -96,7 +106,6 @@ export default function Chat() {
       setMsgs(data);
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
 
-      // mark seen
       data.forEach(async (m) => {
         if (m.sender !== user?.uid && !m.seen) {
           try {
@@ -148,6 +157,8 @@ export default function Chat() {
 
   const confirmBack = () => {
     setShowExit(false);
+    // ✅ FIX 2: Admin goes back to admin panel, not editor inbox
+    if (user?.email === ADMIN_EMAIL) return router.push("/admin");
     router.push(role === "editor" ? "/editor/inbox" : "/client");
   };
 
@@ -186,7 +197,6 @@ export default function Chat() {
     <div style={s.page}>
       <style>{css}</style>
 
-      {/* EXIT CONFIRM MODAL */}
       {showExit && (
         <div style={s.overlay}>
           <div style={s.modal}>
@@ -202,7 +212,6 @@ export default function Chat() {
         </div>
       )}
 
-      {/* HEADER */}
       <div style={s.header}>
         <button onClick={handleBack} style={s.backBtn}>Back</button>
         <div style={{ textAlign: "center" }}>
@@ -214,7 +223,6 @@ export default function Chat() {
         <div style={{ width: 60 }} />
       </div>
 
-      {/* MESSAGES */}
       <div style={s.chat}>
         {msgs.length === 0 && (
           <div style={s.emptyChat}>
@@ -243,7 +251,6 @@ export default function Chat() {
         <div ref={bottomRef} />
       </div>
 
-      {/* INPUT */}
       <div style={s.inputRow}>
         <input
           value={text}
