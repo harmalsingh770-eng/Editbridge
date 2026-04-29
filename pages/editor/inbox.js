@@ -1,168 +1,118 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { db, auth } from "../../lib/firebase";
-import {
-  collection,
-  query,
-  where,
-  onSnapshot
-} from "firebase/firestore";
+import { collection, query, where, onSnapshot, doc, getDoc } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { useRouter } from "next/router";
 
 export default function EditorInbox() {
-  const [chats, setChats] = useState([]);
+  const [chats, setChats]     = useState([]);
   const [loading, setLoading] = useState(true);
-
   const router = useRouter();
+  const unsubAuthRef  = useRef(null);
+  const unsubChatsRef = useRef(null);
 
   useEffect(() => {
-    let unsubChats;
+    unsubAuthRef.current = onAuthStateChanged(auth, (u) => {
+      if (!u) return router.replace("/login?type=editor");
 
-    const unsubAuth = onAuthStateChanged(auth, (user) => {
-      if (!user) {
-        router.push("/login?type=editor");
-        return;
-      }
-
-      // 🔥 GET ONLY EDITOR CHATS
+      // âœ… Query by editorId field (how client.js saves it)
       const q = query(
         collection(db, "chats"),
-        where("editorId", "==", user.uid)
+        where("editorId", "==", u.uid)
       );
 
-      unsubChats = onSnapshot(q, (snap) => {
-        const data = snap.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
-
-        setChats(data);
+      unsubChatsRef.current = onSnapshot(q, async (snap) => {
+        const list = await Promise.all(
+          snap.docs.map(async (d) => {
+            const data = d.data();
+            let clientName = "Client";
+            try {
+              const uSnap = await getDoc(doc(db, "users", data.clientId));
+              if (uSnap.exists()) clientName = uSnap.data().email || "Client";
+            } catch {}
+            return { id: d.id, ...data, clientName };
+          })
+        );
+        setChats(list);
         setLoading(false);
       });
     });
 
     return () => {
-      if (unsubChats) unsubChats();
-      unsubAuth();
+      if (unsubAuthRef.current) unsubAuthRef.current();
+      if (unsubChatsRef.current) unsubChatsRef.current();
     };
   }, []);
 
-  // 🔄 LOADING
-  if (loading) {
-    return <div style={s.loader}>Loading Inbox...</div>;
-  }
+  if (loading) return (
+    <div style={s.loaderPage}>
+      <style>{css}</style>
+      <div style={s.spinner}></div>
+    </div>
+  );
 
   return (
     <div style={s.page}>
-      {/* HEADER */}
-      <div style={s.header}>
-        <h2>💜 Editor Inbox</h2>
+      <style>{css}</style>
 
-        <button
-          onClick={() => router.push("/editor")}
-          style={s.back}
-        >
-          Dashboard
-        </button>
+      <div style={s.header}>
+        <button onClick={() => router.push("/editor")} style={s.backBtn}>Back</button>
+        <h2 style={s.title}>Inbox</h2>
+        <div style={{ width: 60 }} />
       </div>
 
-      {/* EMPTY */}
-      {chats.length === 0 && (
+      {chats.length === 0 ? (
         <div style={s.empty}>
-          No clients yet 🚀
+          <div style={{ fontSize: 44, marginBottom: 12 }}>ðŸ“­</div>
+          <p style={{ fontWeight: 600, margin: 0 }}>No chats yet</p>
+          <p style={{ color: "#94a3b8", fontSize: 13, marginTop: 6 }}>
+            Clients will appear here after paying
+          </p>
+        </div>
+      ) : (
+        <div style={s.list}>
+          {chats.map(c => (
+            <div key={c.id} style={s.card} onClick={() => router.push("/chat/" + c.id)}>
+              <div style={s.avatar}>{c.clientName?.[0]?.toUpperCase() || "C"}</div>
+              <div style={s.info}>
+                <div style={s.name}>{c.clientName}</div>
+                <div style={s.lastMsg}>{c.lastMessage || "No messages yet"}</div>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+                <span style={{ ...s.statusPill, background: c.unlocked ? "#10b981" : "#f59e0b" }}>
+                  {c.unlocked ? "Unlocked" : "Pending"}
+                </span>
+                <span style={s.arrow}>{">"}</span>
+              </div>
+            </div>
+          ))}
         </div>
       )}
-
-      {/* CHAT LIST */}
-      {chats.map((chat) => (
-        <div
-          key={chat.id}
-          onClick={() => router.push(`/chat/${chat.id}`)}
-          style={s.card}
-        >
-          <div>
-            <b>Client Chat</b>
-            <p style={s.sub}>
-              {chat.id.slice(0, 12)}
-            </p>
-          </div>
-
-          {/* STATUS (INFO ONLY) */}
-          <div
-            style={{
-              ...s.status,
-              background: chat.unlocked ? "#10b981" : "#f59e0b"
-            }}
-          >
-            {chat.unlocked ? "Paid" : "Pending"}
-          </div>
-        </div>
-      ))}
     </div>
   );
 }
 
+const css = `
+  body { margin: 0; font-family: sans-serif; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+`;
+
 const s = {
-  page: {
-    minHeight: "100vh",
-    padding: 20,
-    background: "linear-gradient(135deg,#020617,#0f172a,#4c1d95)",
-    color: "white"
-  },
-
-  loader: {
-    height: "100vh",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    background: "#020617",
-    color: "white"
-  },
-
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    marginBottom: 20
-  },
-
-  back: {
-    background: "#7c3aed",
-    border: "none",
-    padding: "8px 12px",
-    borderRadius: 8,
-    color: "white",
-    cursor: "pointer"
-  },
-
-  empty: {
-    textAlign: "center",
-    marginTop: 50,
-    color: "#aaa"
-  },
-
-  card: {
-    padding: 15,
-    marginBottom: 12,
-    borderRadius: 15,
-    background: "rgba(30,27,75,0.6)",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    cursor: "pointer",
-    border: "1px solid rgba(255,255,255,0.1)"
-  },
-
-  sub: {
-    fontSize: 12,
-    color: "#aaa"
-  },
-
-  status: {
-    padding: "5px 12px",
-    borderRadius: 20,
-    fontSize: 12,
-    color: "white"
-  }
+  page: { minHeight: "100vh", background: "linear-gradient(135deg,#020617,#0f172a,#1e1b4b)", color: "white" },
+  loaderPage: { height: "100vh", display: "flex", justifyContent: "center", alignItems: "center", background: "#020617" },
+  spinner: { width: 32, height: 32, border: "3px solid #333", borderTop: "3px solid #7c3aed", borderRadius: "50%", animation: "spin 1s linear infinite" },
+  header: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", borderBottom: "1px solid rgba(255,255,255,0.08)" },
+  backBtn: { background: "none", border: "1px solid rgba(255,255,255,0.15)", color: "white", fontSize: 14, cursor: "pointer", padding: "6px 14px", borderRadius: 8 },
+  title: { margin: 0, fontSize: 18, fontWeight: 700 },
+  list: { padding: 16, display: "flex", flexDirection: "column", gap: 10 },
+  card: { display: "flex", alignItems: "center", gap: 14, background: "#1e293b", padding: "14px 16px", borderRadius: 14, cursor: "pointer", border: "1px solid rgba(255,255,255,0.04)" },
+  avatar: { width: 46, height: 46, borderRadius: "50%", background: "linear-gradient(135deg,#7c3aed,#6366f1)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 18, flexShrink: 0 },
+  info: { flex: 1, minWidth: 0 },
+  name: { fontWeight: 600, fontSize: 15, marginBottom: 3 },
+  lastMsg: { color: "#94a3b8", fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
+  statusPill: { padding: "2px 8px", borderRadius: 20, fontSize: 11, color: "white", fontWeight: 600 },
+  arrow: { color: "#475569", fontSize: 18 },
+  empty: { textAlign: "center", marginTop: 80, padding: 20 },
 };
